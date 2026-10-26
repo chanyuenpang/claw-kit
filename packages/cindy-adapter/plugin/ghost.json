@@ -6,7 +6,7 @@
   "description": "[claw host]\nplatform: cindy\nHost/session identity remains adapter-owned, independent of model/provider. Workflow tools and explicit shared skill installation. Use standard global skill names (for example planning).",
   "whenToUse": "每个 Cindy 会话启动时的 claw-kit 流程入口，以及已有计划恢复、任务推进与收口。公共入口技能名为 using-claw-kit。",
   "command": "claw-kit",
-  "version": "0.2.61.1",
+  "version": "0.2.61.2",
   "kind": "chip",
   "entry": "main.js",
   "launch": "resident",
