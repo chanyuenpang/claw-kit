@@ -252,7 +252,7 @@ export async function promoteCandidate(directory, { publish = false, sourceRoot 
 
 export async function main(args = process.argv.slice(2)) {
   const [operation, ...options] = args;
-  const allowed = operation === "prepare" ? ["--artifacts", "--versions", "--known-versions", "--cindy-artifact-root"] : operation === "start-test" ? ["--candidate", "--evidence"] : ["--candidate"];
+  const allowed = operation === "prepare" ? ["--artifacts", "--versions", "--known-versions", "--cindy-artifact-root", "--cli-base"] : operation === "start-test" ? ["--candidate", "--evidence"] : ["--candidate"];
   const parsed = {};
   for (let i = 0; i < options.length; i += 2) {
     assert(allowed.includes(options[i]) && options[i + 1] && !options[i + 1].startsWith("--") && !(options[i] in parsed), "Invalid beta arguments.");
@@ -289,7 +289,7 @@ export async function main(args = process.argv.slice(2)) {
       } catch { console.warn("Cindy artifact tag read unavailable; supply --known-versions or --cindy-artifact-root to include additional known artifact allocations."); }
     }
     const targets = parsed["--versions"] ? JSON.parse(parsed["--versions"]) : {};
-    const prepared = await prepareCandidateVersions({ sourceRoot: repoRoot, artifacts: selected, published, targets });
+    const prepared = await prepareCandidateVersions({ sourceRoot: repoRoot, artifacts: selected, published, targets, cliBase: parsed["--cli-base"] });
     console.log(JSON.stringify({ directory: prepared.directory, versions: prepared.record.versions, next: prepared.next }, null, 2));
     return;
   }

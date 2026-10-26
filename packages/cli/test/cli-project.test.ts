@@ -407,6 +407,21 @@ fs.writeFileSync = function(file, ...args) {
   assert.equal(JSON.parse(fs.readFileSync(target, "utf-8")).version, "0.1.1");
 });
 
+test("cli context namespaces the update skill only on Codex", () => {
+  const root = createFixture("context-skill-names");
+  const npmShim = createClawUpdateNpmShim({ latestVersion: "0.9.9" });
+  const env = { PATH: `${npmShim.binDir}${path.delimiter}${process.env.PATH ?? ""}` };
+  runClaw(["init", "--name", "Context Skill Names"], root, env);
+  const projectPath = path.join(root, ".claw", "project.json");
+  const config = JSON.parse(fs.readFileSync(projectPath, "utf-8")) as JsonRecord;
+  fs.writeFileSync(projectPath, JSON.stringify({ ...config, version: "9.9.9" }), "utf-8");
+  for (const host of [undefined, "standard", "dsh", "cindy", "opencode", "codex"]) {
+    const result = runClaw(["context", ...(host ? ["--host", host] : [])], root, env);
+    const versionSync = (result.startupRecovery as JsonRecord).versionSync as JsonRecord;
+    assert.equal(versionSync.updateSkill, host === "codex" ? "claw-kit:update" : "update", String(host));
+  }
+});
+
 test("cli context reports lagging CLI info when project version is newer than both local CLI and npm latest", () => {
   const root = createFixture("context-version-lagging");
   const npmShim = createClawUpdateNpmShim({
@@ -429,7 +444,7 @@ test("cli context reports lagging CLI info when project version is newer than bo
   assert.equal(versionSync.cliVersionLagging, true);
   assert.equal(versionSync.updateAvailable, true);
   assert.equal(versionSync.autoUpdateEnabled, true);
-  assert.equal(versionSync.updateSkill, "claw-kit:update");
+  assert.equal(versionSync.updateSkill, "update");
   assert.equal(versionSync.latestPublishedVersion, "0.9.9");
   assert.match(String(versionSync.message), /npm latest is only 0.9.9/);
 });

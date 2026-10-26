@@ -15,13 +15,15 @@ Accepted working truth for how the two supported hosts resolve the claw-kit Sess
 Because of the above, the two guidance configs intentionally diverge on reference syntax, and neither emits a `plugin://` link in the prompt text:
 
 - **Codex config** (core bundled `packages/core/src/workflow-guidance.config.json`): the default and recovered `sessionStart` prompts reference `claw-kit:using-claw-kit` and `@claw-kit`, with no `plugin://` link in the prompt text.
-- **opencode config** (`packages/opencode-adapter/workflow-guidance.opencode.json`): the default and recovered prompts say "Load the `claw-kit:using-claw-kit` skill" (namespaced since 2026-10-12, when every platform's guidance was unified on `claw-kit:<skill>`; opencode still registers the skill under its bare name) and "Use the claw-kit plugin", with **no `plugin://` link** anywhere.
-- **core fallback constants** in `packages/core/src/workflow-guidance.ts` use host-neutral wording and `claw-kit:using-claw-kit`. Only the explicit Codex `sessionStart` override adds `@claw-kit`; missing platform configuration must not degrade to Codex conventions.
+- **opencode config** (`packages/opencode-adapter/workflow-guidance.opencode.json`): default and recovered prompts refer to the skill by its registered bare name `using-claw-kit` and say "Use the claw-kit plugin", with **no `plugin://` link**.
+- **DSH startup** renders the registered bare skill name `using-claw-kit` at both startup entry points (`packages/dsh-adapter/src/protocol.ts`); it does not use the Codex namespace.
+- **core fallback constants** in `packages/core/src/workflow-guidance.ts` use host-neutral `using-claw-kit` wording. Codex-specific namespacing and `@claw-kit` are confined to Codex host configuration; other hosts must not inherit Codex conventions.
 - Historical `0.1.53` evidence used a low-complexity entry rule on both startup-copy surfaces. That rule is version-bound and no longer owns current entry behavior; `.claw/truth/adr/using-claw-kit-session-entry.md` owns the current reusable-project-knowledge admission decision. This document owns only the host-specific prompt reference syntax and plugin/skill wording.
 
 ## Verification
 
 - The Codex adapter's `claw context --host codex` startup path renders Codex conventions (`@claw-kit`, `claw-kit:using-claw-kit`) locally.
+- The DSH adapter's two prompt builders render `using-claw-kit`, matching its registered skill name.
 - The opencode adapter's `claw context --host opencode` startup path renders opencode conventions (bare skill name, no `plugin://`) locally.
 - `npm run check` passes for `packages/core` and `packages/cli`.
 

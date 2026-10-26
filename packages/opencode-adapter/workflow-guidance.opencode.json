@@ -271,7 +271,7 @@
       "summary": "The plan is completed and ready for closeout.",
       "nextsteps": [
         "1. Finish any remaining workflow-guided closeout work such as archive or parent-plan resumption.",
-        "2. Do not continue ad hoc in this thread. Start the next task only through `claw-kit:using-claw-kit`, then follow the returned `workflowGuidance`."
+        "2. Do not continue ad hoc in this thread. Start the next task only through `using-claw-kit`, then follow the returned `workflowGuidance`."
       ]
     },
     "end.closed": {
@@ -302,7 +302,7 @@
         "This session started inside a .claw project: {{projectName}} ({{projectId}}).",
         ".claw directory: {{clawDir}}",
         "Follow the claw workflowGuidance return fields as the required next-step contract.",
-        "The claw-kit workflow is active. Load the `claw-kit:using-claw-kit` skill as the main workflow skill for this session."
+        "The claw-kit workflow is active. Load the `using-claw-kit` skill as the main workflow skill for this session."
       ]
     },
     "recovered": {

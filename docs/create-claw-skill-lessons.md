@@ -40,7 +40,7 @@ For `create-claw-skill`, good long-lived rules include:
 - preserve the original skill text as an adjacent fallback document
 - validate the generated template with `claw template validate --template <template-id>`
 - treat a missing or older template `version` as a package review and optimization trigger, not a mechanical version bump
-- keep the user-facing route concise: `Template out of date. Use claw-kit:create-claw-skill to upgrade template.`; put the detailed checklist in `references/template-upgrade.md`
+- keep the user-facing route concise: `Template out of date. Use create-claw-skill to upgrade template.`; put the detailed checklist in `references/template-upgrade.md`
 
 ## What Belongs In references
 

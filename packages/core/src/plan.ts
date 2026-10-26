@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { builtInSkillName } from "./skill-names.js";
 import { buildCompletionHooks } from "./completion-hooks.js";
 import { allocateTaskContext, ensureTaskContext, findTaskDirectory, listTaskDirectories, previewProjectConfig, removeLegacyTaskMeta, resolveProjectContext, resolveTaskContext, resolveTaskName } from "./context.js";
 import { resolvePlanEffectiveConfig } from "./effective-config.js";
@@ -1315,7 +1316,7 @@ async function createSeedPlan(
     configOverride: template.configOverride,
   });
   const planningEnabled = forcePlanning || template.source === "project" || template.id !== "default" || effectiveConfig?.planning !== false; // Explicit workflow tasks are never erased by a global planning preference.
-  const planningSkill = effectiveConfig?.externalPlanningSkill?.trim() || "claw-kit:planning";
+  const planningSkill = effectiveConfig?.externalPlanningSkill?.trim() || builtInSkillName("planning", host);
   if (explicitTasks?.length) {
     // An explicit action request owns its tasks; no planning meta task is injected.
     return {

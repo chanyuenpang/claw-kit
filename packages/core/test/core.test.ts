@@ -1205,7 +1205,7 @@ test("writePlan seeds a planning-first root plan by default", async () => {
   assert.equal(result.plan.title, "Demo task");
   assert.equal(result.plan.status, "process.discussing");
   assert.equal(result.plan.goal.text, "Ship the first plan");
-  assert.equal(result.plan.tasks[0]?.title, "Complete planning with claw-kit:planning");
+  assert.equal(result.plan.tasks[0]?.title, "Complete planning with planning");
   assert.equal(result.plan.tasks.length, 1);
   assert.doesNotMatch(
     [
@@ -1274,7 +1274,7 @@ test("planning appendTasks preserves the seeded planning task ordering", async (
   assert.deepEqual(
     plan.tasks.map((task) => ({ id: task.id, title: task.title, status: task.status })),
     [
-      { id: 1, title: "Complete planning with claw-kit:planning", status: "done" },
+      { id: 1, title: "Complete planning with planning", status: "done" },
       { id: 2, title: "Implement the change", status: "pending" },
       { id: 3, title: "Verify the change", status: "pending" },
     ],
@@ -1632,7 +1632,7 @@ test("writePlan loads a plan-like project template and strips template-only task
   assert.equal(result.plan.title, "Use planlike template");
   assert.equal(result.plan.status, "process.discussing");
   assert.equal(result.plan.goal.text, "Compile the workflow");
-  assert.equal(result.plan.tasks[0]?.detail, "Use claw-kit:planning to shape the conversion work.");
+  assert.equal(result.plan.tasks[0]?.detail, "Use planning to shape the conversion work.");
   assert.match(result.plan.tasks[1]?.detail ?? "", /Goal Mode is enabled/);
   assert.equal("guidance" in (result.plan.tasks[2] ?? {}), false);
   assert.equal("goalModeDetail" in (result.plan.tasks[1] ?? {}), false);
@@ -2775,7 +2775,7 @@ test("createSubplan uses the planning-aware default seed shape", async () => {
   assert.equal(result.workflowGuidance.goalTool, undefined);
   assert.match(result.workflowGuidance.notes ?? "", /is now the active plan under parent plan/);
   assert.doesNotMatch(result.workflowGuidance.notes ?? "", /Goal/);
-  assert.equal(result.workflowGuidance.nextsteps.some((step) => /^1\. Use claw-kit:planning /.test(step)), true);
+  assert.equal(result.workflowGuidance.nextsteps.some((step) => /^1\. Use planning /.test(step)), true);
 });
 
 test("createSubplan uses project defaultPlanTemplate when templateName is omitted", async () => {
@@ -3659,20 +3659,44 @@ test("focus recovery quarantines a conflicting journal without blocking later mu
   assert.deepEqual(readFocusedPlan(project, "conflict-session"), planRef);
 });
 
+test("built-in skill names are namespaced only for Codex across planning and completion", async () => {
+  for (const host of [undefined, "standard", "cindy", "opencode", "dsh", "codex"]) {
+    const root = createFixture("skill-names-" + (host ?? "hostless"));
+    const created = await writePlan({ cwd: root, taskName: "skill-names", title: "Skill names", host });
+    const prefix = host === "codex" ? "claw-kit:" : "";
+    assert.equal(created.plan.tasks[0]?.title, "Complete planning with " + prefix + "planning");
+    assert.ok(created.workflowGuidance.nextsteps.some((step) => step.includes("Use " + prefix + "planning ")));
+    const completed = await buildPlanWorkflowGuidance({
+      taskName: "skill-names", planFile: "plan.json", host,
+      plan: { ...created.plan, status: "end.completed", knowledgeCapture: false,
+        tasks: created.plan.tasks.map((task) => ({ ...task, status: "done" })) },
+    });
+    assert.ok(completed.nextsteps.some((step) => step.includes("through `" + prefix + "using-claw-kit`")));
+    const custom = await buildPlanWorkflowGuidance({
+      taskName: "skill-names", planFile: "plan.json", host, plan: created.plan,
+      commandSource: "plan.create", projectRoot: root,
+      projectConfig: { ...resolveProjectContext(root).projectConfig!, externalPlanningSkill: "team:planner" },
+    });
+    assert.ok(custom.nextsteps.some((step) => step.includes("Use team:planner ")));
+  }
+});
+
 test("session-start wording is standard by default and only Codex overrides it", () => {
   const params = { projectName: "Demo", projectId: "demo", clawDir: "/demo/.claw", protocolOk: "ok" };
   const recovered = {
     taskName: "t", planFile: "plan.json", planStatus: "process.active", planSummary: "0/1 t",
     nextsteps: [], commandHints: [], notes: "", askUser: "", goalMode: "objective", planContentLines: [],
   };
-  for (const host of [undefined, "standard", "cindy", "opencode", "dsh"]) {
+  for (const host of [undefined, "standard", "cindy", "opencode", "dsh", "openclaw"]) {
     const text = `${buildSessionStartDefaultPrompt(params, host)} ${buildSessionStartRecoveredPrompt(recovered, host)}`;
     assert.doesNotMatch(text, /goal mode|@claw-kit|Codex/i, String(host));
-    assert.match(text, /Load claw-kit:using-claw-kit as the main workflow skill/);
+    assert.match(text, /Load using-claw-kit as the main workflow skill/);
+    assert.doesNotMatch(text, /claw-kit:/);
   }
   const codex = `${buildSessionStartDefaultPrompt(params, "codex")} ${buildSessionStartRecoveredPrompt(recovered, "codex")}`;
   assert.match(codex, /You can use goal mode in this thread/);
   assert.match(codex, /Use @claw-kit for this session\./);
+  assert.match(codex, /Load claw-kit:using-claw-kit as the main workflow skill/);
   assert.match(codex, /- goal mode: objective/);
 });
 

@@ -46,6 +46,11 @@
 <!-- state: history -->
 ## 演进记录
 
+<!-- dated: 2026-10-23 -->
+### 0.2.65 CLI/Core/Client release stopped after partial npm delivery
+
+The authorized release work closed at the user's request after the Core `0.2.65` tarball had been retrieved and verified and npm had accepted Client `0.2.65`; Client tarball retrieval was still unverified at that stopping point. The CLI `0.2.65` was not published, and the associated shared-skill `0.2.61` and Cindy `0.2.65.0` artifacts were not published/promoted; source had not been pushed. This records the bounded outcome at closeout, not present-day registry state, full release completion, or permission to replay an accepted upload. Release artifacts retain separate immutable delivery evidence and family ownership.
+
 <!-- dated: 2026-09-29 -->
 ### 0.2.40 GitHub source-first checkpoint
 
@@ -74,9 +79,3 @@
 
 - 全局 `@veewo/claw` 已刷新到 `0.2.27`，官方 `claw-kit@claw-kit` Codex plugin 已刷新到 `0.2.27.0`。
 - 刷新使用 `chanyuenpang/claw-kit` GitHub marketplace，且本地开发 identity 已清除；该记录是用户端 update 完成证据，不改变 npm 与 marketplace artifact 各自的发布边界。
-
-<!-- dated: 2026-08-20 -->
-### 0.2.23 CLI/Core/Client 发布完成态
-
-- `@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` `0.2.23` 已发布；三个 npm 包的真实 registry 获取、`v0.2.23` 和公开 GitHub Release 均已完成验证。
-- 该记录仅覆盖 npm artifact family。Codex `0.2.23.1` 和 Cindy `0.2.23.0` 保持各自独立的 marketplace source release 边界，且不包含任何本机安装刷新。

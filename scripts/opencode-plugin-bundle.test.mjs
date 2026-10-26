@@ -126,6 +126,9 @@ test("OpenCode main-agent guidance leaves automatic closeout to the host", async
   const guidance = JSON.parse(await fs.readFile(new URL("workflow-guidance.opencode.json", adapterRoot), "utf8"));
   const agent = await fs.readFile(new URL("agents/claw-knowledge-writer.md", adapterRoot), "utf8");
   const allDone = guidance.states["process.allTasksDone"];
+  const plugin = await fs.readFile(new URL("plugin/index.ts", adapterRoot), "utf8");
+  assert.match(plugin, /Load using-claw-kit/);
+  assert.doesNotMatch(plugin + JSON.stringify(guidance), /claw-kit:using-claw-kit/);
 
   assert.equal("delegates" in guidance, false);
   assert.equal("delegateSubagents" in allDone, false);

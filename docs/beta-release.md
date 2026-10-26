@@ -25,6 +25,7 @@ npm run audit:release-versions -- --phase release --cli-base <target-cli> --arti
 
 - CLI/Core/Client 同步三段版本，按当前已知版本高水位递增第三段；更新准确依赖、lockfile，以及 CLI 基线涉及的 adapter manifests。
 - 单独 Codex/DSH/OpenCode/OpenClaw/Cindy 只升该 family 的第四段，保留所选 CLI base。CLI 基线更新不授权打包/发布未选中的 adapter。
+- 本地 CLI 源码领先于已发布版本时，adapter-only 准备使用 `beta:prepare -- --artifacts <family> --cli-base <已核实的公开CLI版本>`；仅按该 base 分配所选 adapter 的新号，不修改本地 CLI 或其他 adapter。
 - DSH 沿既有正式映射 A.B.C.N → npm A.B.C-rc.N；rc.N 是四段到 npm 的编码，测试与正式相同，不新增 -beta 版本线。
 - Cindy 的 vcindy tag 属于独立 artifact 仓库，不能用源码 origin 的 tag 代替。prepare 默认读取既有官方 artifact 仓库，也可传 --cindy-artifact-root <已授权checkout>；--known-versions <JSON> 可补充明确已知的 family→正式版本数组。
 - 选号复用 source manifests、已有 candidate/dsh-beta 清单及已知 npm/tag 事实。只看公开 latest 会复用尚未发布的本地号码；准备记录也必须计入。读取远端失败不构成第二套发布授权，保留已知本地高水位并报告限制。

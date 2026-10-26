@@ -43,7 +43,7 @@ env: { ...process.env, CLAW_HOST: "opencode", CLAW_GUIDANCE_CONFIG: <opencode co
 两个平台的 config 使用各自贴合平台语义的引用语法：
 
 - **Codex 版**（core bundled `workflow-guidance.config.json` + `FALLBACK_SESSION_START` 常量）：使用 `@claw-kit` 提及和 `claw-kit:using-claw-kit` skill 引用。`[@claw-kit](plugin://claw-kit@claw-kit)` 是 Codex 有效的 official plugin markdown 链接语法（仍出现在 `packages/codex-adapter/references/` 中），但 core config 与 fallback 常量统一采用简洁的 `@claw-kit` 提及。
-- **OpenCode 版**（`workflow-guidance.opencode.json`）：不使用 `plugin://` 语法，因为 opencode 不解析该协议。opencode 通过 `skills.paths` 注册 skill，agent 用 `skill` 工具按裸名（如 `using-claw-kit`）加载；sessionStart 文案以 "the claw-kit plugin" / "Load the `using-claw-kit` skill" 表达，确保 opencode session 拿到注入 prompt 后可直接进入 claw 流程。
+- **OpenCode 版**（`workflow-guidance.opencode.json`）：不使用 `plugin://` 语法，因为 opencode 不解析该协议。opencode 通过 `skills.paths` 注册 skill，agent 用 `skill` 工具按裸名（如 `using-claw-kit`）加载；sessionStart 文案按登记名 `using-claw-kit` 引导。DSH 的启动提示也使用其登记的普通技能名；仅 Codex 使用 `claw-kit:<skill>` 命名空间。具体 DSH 注入锚点由 `packages/dsh-adapter/src/protocol.ts` 拥有。
 
 > 修正记录：本节早先版本曾把 `plugin://` 归为 opencode 语法、并要求 Codex 回避它，方向恰好写反。详见 `.claw/truth/features/platform-sessionstart-prompt-isolation.md`。
 

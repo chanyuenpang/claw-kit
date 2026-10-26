@@ -96,7 +96,7 @@ export const configGuideContent = {
         group: "Extension",
         title: "Ordered knowledge writers",
         summary: "Runs project-selected knowledge writer skills in configuration order.",
-        detail: "The finalizer always runs an ordered governance-skill sequence with the same unattended prompt. This array replaces the default [claw-kit:knowledge-writer]; external skills do not need a claw session workflow.",
+        detail: "The finalizer always runs an ordered governance-skill sequence with the same unattended prompt. This array replaces the default [knowledge-writer] (Codex: claw-kit:knowledge-writer); external skills do not need a claw session workflow.",
         example: `"knowledgeWriter": { "externalSkills": ["truth-writer", "adr-writer"] }`
       },
       {
@@ -233,7 +233,7 @@ export const configGuideContent = {
         group: "扩展",
         title: "有序 knowledge writer",
         summary: "按配置顺序运行项目指定的 knowledge writer skill。",
-        detail: "finalizer 始终使用同一份无人值守 prompt 运行有序治理 skill 序列。该数组替换默认的 [claw-kit:knowledge-writer]；外部 skill 不要求 claw session workflow。",
+        detail: "finalizer 始终使用同一份无人值守 prompt 运行有序治理 skill 序列。该数组替换默认的 [knowledge-writer] (Codex: claw-kit:knowledge-writer)；外部 skill 不要求 claw session workflow。",
         example: `"knowledgeWriter": { "externalSkills": ["truth-writer", "adr-writer"] }`
       },
       {

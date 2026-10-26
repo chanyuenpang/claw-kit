@@ -57,7 +57,7 @@ New plans use the current or ancestor project and automatically create missing l
 
 Projects can add reusable templates directly under `.claw/templates` with `.json`, `.js`, `.mjs`, or `.cjs` files. Put `defaultPlanTemplate` in `.claw/project.json` for a shared team default, or in `.claw/project-override.json` for a local personal override.
 
-When `.claw/project.json` has `planning: true`, the default `default` template seeds one planning task in `process.discussing`. It loads the effective `externalPlanningSkill`, falling back to `claw-kit:planning`, and stays open while the requirements and proposed solution are discussed and confirmed with the user. Use `plan start` when execution tasks remain; when planning itself resolves the request, complete task 1 and close the plan.
+When `.claw/project.json` has `planning: true`, the default `default` template seeds one planning task in `process.discussing`. It loads the effective `externalPlanningSkill`, falling back to `planning` (`claw-kit:planning` only on Codex), and stays open while the requirements and proposed solution are discussed and confirmed with the user. Use `plan start` when execution tasks remain; when planning itself resolves the request, complete task 1 and close the plan.
 
 When `planning: false`, `claw plan create` seeds the smallest executable plan directly in `process.active`.
 

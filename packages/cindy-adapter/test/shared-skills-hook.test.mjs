@@ -40,7 +40,7 @@ test('entry hook introduces Cindy and the workflow only once per session, includ
   assert.equal(verdict.hookId, 'entry-1');
   assert.equal(verdict.action, 'rewrite');
   assert.ok(verdict.text.startsWith(original + '\n\n'));
-  assert.equal(verdict.text, original + '\n\n[claw]当前是 Cindy Host，本次会话走 claw 流程，先读取 using-claw-kit 技能再开展任务[/claw]');
+  assert.equal(verdict.text, original + '\n\n[claw]当前是 Cindy Host。本次会话先按可用技能列表中的路径读取公共技能 using-claw-kit 的 SKILL.md，再读取其 Cindy 路由说明，完成后开展任务。[/claw]');
   assert.equal(h.calls.length, 1);
   assert.equal(h.calls[0].method, 'claw/claim-entry-hook');
   await h.handle({ type: 'event', name: 'will-user-message', hookId: 'entry-2', data: { sessionId: 's', text: '继续' } });

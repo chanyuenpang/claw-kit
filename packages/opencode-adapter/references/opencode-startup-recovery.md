@@ -12,7 +12,7 @@ The plugin works on these rules:
 - plugin event handlers are enhancement only
 - `session.created` recovery restores startup harness state before the main workflow starts
 - if `claw context` detects that the project protocol version is ahead of the current CLI, startup recovery surfaces `startupRecovery.versionSync` in the prompt
-- if `autoUpdate = true` and a newer published claw-kit exists, startup recovery routes the agent to `claw-kit:update` as the first action before other work
+- if `autoUpdate = true` and a newer published claw-kit exists, startup recovery routes the agent to `update` as the first action before other work
 - if `autoUpdate = false`, startup recovery keeps the version note informational only
 
 ## Required startup routine

@@ -117,7 +117,7 @@
     "For every subplan use references/host-routing.md and follow the owning host handoff; never manually duplicate adapter-owned Goal/progress effects.",
     "Let explicit template creation choose its runtime storage automatically.",
     "Preserve direct behavior in the adjacent fallback document and use focused references only when needed.",
-    "Every TEMPLATE.json declares the independent template-driver version and names claw-kit:create-claw-skill as its only maintenance owner.",
+    "Every TEMPLATE.json declares the independent template-driver version and names create-claw-skill as its only maintenance owner.",
     "Every guidance.onDone.choices task must expose valid ids once in completionChoices and one real --choice CLI command template without repeating ids in nextsteps.",
     "Treat claw plan start as optional global syntax sugar: templates opt into recommending it through the current task's guidance.onPlanStart, while ordinary plan and task mutations remain valid.",
     "Do not claim completion before file-based template validation and content coverage pass."

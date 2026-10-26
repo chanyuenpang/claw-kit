@@ -229,7 +229,7 @@ test("cli plan create accepts a positional title and seeds planning discussion b
   assert.equal((writeResult.plan as JsonRecord).status, "process.discussing");
   const plan = writeResult.plan as JsonRecord;
   const tasks = plan.tasks as JsonRecord[];
-  assert.equal(String((tasks[0] as JsonRecord).title), "Complete planning with claw-kit:planning");
+  assert.equal(String((tasks[0] as JsonRecord).title), "Complete planning with planning");
   assert.equal(tasks.length, 1);
 });
 
@@ -245,7 +245,7 @@ test("cli plan create accepts an explicit template flag", () => {
   assert.equal((plan.status as string), "process.discussing");
   assert.equal((result.commandHints as string[])[0], 'claw search --query "<topic>"');
   assert.equal("goalTool" in result, false);
-  assert.equal(String((tasks[0] as JsonRecord).title), "Complete planning with claw-kit:planning");
+  assert.equal(String((tasks[0] as JsonRecord).title), "Complete planning with planning");
   assert.equal(tasks.length, 1);
 });
 
@@ -865,7 +865,7 @@ test("cli subplan create keeps task rootPlan stable and derives goal from the pa
   assert.equal(fs.existsSync(taskFile(root, "demo-task", "meta.json")), false);
   assert.equal(childPlan.title, "Implement child work");
   assert.equal(childPlan.status, "process.discussing");
-  assert.match(String((result.nextsteps as string[])[0] ?? ""), /^1\. Use claw-kit:planning /);
+  assert.match(String((result.nextsteps as string[])[0] ?? ""), /^1\. Use planning /);
   assert.equal((result.commandHints as string[])[0], 'claw search --query "<topic>"');
   assert.equal("goalMode" in result, false);
   assert.equal("goalTool" in result, false);

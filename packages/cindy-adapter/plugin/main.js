@@ -2,8 +2,8 @@
 // The claw CLI remains user-installed; this resident process only orchestrates
 // the CLI through the declared Node worker and uses Cindy's public Agent slot.
 
-const CINDY_HOST_IDENTITY = "[claw host]\nplatform: cindy\nAdapter-owned host identity, independent of model/provider or skill path. Host/session arguments remain adapter-owned.\nPublic skills come from the global shared package. Resolve claw-kit:planning as the installed planning skill (and other claw-kit:<skill> references by their original skill name).";
-const CINDY_DEVELOPMENT_ENTRY = '\n\n[claw]当前是 Cindy Host，本次会话走 claw 流程，先读取 using-claw-kit 技能再开展任务[/claw]';
+const CINDY_HOST_IDENTITY = "[claw host]\nplatform: cindy\nAdapter-owned host identity, independent of model/provider or skill path. Host/session arguments remain adapter-owned.\nPublic skills come from the global shared package. Use their standard skill names, for example planning.";
+const CINDY_DEVELOPMENT_ENTRY = '\n\n[claw]当前是 Cindy Host。本次会话先按可用技能列表中的路径读取公共技能 using-claw-kit 的 SKILL.md，再读取其 Cindy 路由说明，完成后开展任务。[/claw]';
 const entryHookSessions = new Set();
 async function developmentEntryVerdict(msg) {
   const original = msg.data?.text;
@@ -24,7 +24,7 @@ async function developmentEntryVerdict(msg) {
 }
 function withCindyHostIdentity(result) {
   const body = result && typeof result === "object" && !Array.isArray(result) ? result : { value: result };
-  return { ...body, clawHost: { platform: "cindy" }, skillResolution: 'Resolve claw-kit:<skill> references by the original global skill name, e.g. planning. Missing skills are advisory; use skills_status and explicitly install_skills to repair.' };
+  return { ...body, clawHost: { platform: "cindy" }, skillResolution: 'Use standard global skill names, e.g. planning. Missing skills are advisory; use skills_status and explicitly install_skills to repair.' };
 }
 
 const workdirs = new Map();

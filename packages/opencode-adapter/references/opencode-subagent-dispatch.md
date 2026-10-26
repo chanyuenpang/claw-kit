@@ -11,7 +11,7 @@ opencode knowledge deposition is not a delegated main-agent responsibility. Neve
 ## Research and review specialists
 
 - Use an explorer-style worker for bounded investigation when returned guidance requires it.
-- Do not read the search skill inline; attach the `claw-kit:researcher` skill item with the exact question or target paths.
+- Do not read the search skill inline; attach the `researcher` skill item with the exact question or target paths.
 - If the task is research, wait for completion. Do not skip ahead of a result that current execution depends on.
 - Reuse a suitable same-type specialist when the contract requests reuse.
 - Apply useful results back through canonical claw or repository operations.

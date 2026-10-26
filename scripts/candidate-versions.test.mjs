@@ -116,6 +116,15 @@ test("Cindy supplied artifact facts and independent OpenClaw dependency alignmen
   assert.equal((await json(path.join(root, "package.json"))).version, "0.2.43");
 });
 
+test("adapter-only preparation can use the published CLI base without changing the local CLI", async t => {
+  const { root } = await fixture(t);
+  const prepared = await prepareCandidateVersions({ sourceRoot: root, artifacts: ["cindy"], cliBase: "0.2.42", published: { cindy: ["0.2.42.3"] } });
+  assert.equal(prepared.record.versions.cindy.version, "0.2.42.4");
+  assert.equal((await json(path.join(root, "packages/cindy-adapter/plugin/ghost.json"))).version, "0.2.42.4");
+  assert.equal((await json(path.join(root, "package.json"))).version, "0.2.43");
+  assert.equal((await json(path.join(root, "packages/cli/package.json"))).dependencies["@veewo/claw-core"], "0.2.43");
+});
+
 test("explicit owner target versions are honored, without permitting reuse or unrelated bumps", async t => {
   const { root } = await fixture(t);
   await assert.rejects(prepareCandidateVersions({ sourceRoot: root, artifacts: ["cli"], targets: { cli: "0.2.43" } }), /high water/);

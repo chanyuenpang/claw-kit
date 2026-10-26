@@ -50,7 +50,7 @@ When the user asks to change claw configuration, use the `config` skill as the d
   - healthy matching version information is omitted from the public `claw context` output
 - `autoUpdate`
   - default: `true`
-  - when `true` and a newer published claw-kit exists, startup recovery tells the agent to make `claw-kit:update` the first action
+  - when `true` and a newer published claw-kit exists, startup recovery tells the agent to make `update` the first action
   - when `false`, startup recovery only reports the version mismatch and does not instruct the agent to update
 
 When memory embedding or GitNexus is enabled, `claw context` adds optional `searchGuidance`: use `claw search` to narrow document context and GitNexus to narrow code context as available, then use the default search for exact locations. The field is omitted when neither capability is enabled.
@@ -58,7 +58,7 @@ When memory embedding or GitNexus is enabled, `claw context` adds optional `sear
   - archived task retention limit before oldest-archive pruning
   - default: `9`
 - `knowledgeWriter.externalSkills`
-  - optional ordered documentation-governance skill sequence replacing the default `["claw-kit:knowledge-writer"]`; every skill receives the same unattended prompt, and external skills need no claw session workflow
+  - optional ordered documentation-governance skill sequence replacing the default `["knowledge-writer"]`; every skill receives the same unattended prompt, and external skills need no claw session workflow
 - `memory.enabled`
   - master switch for project memory, embedding refresh, and `claw search`
 - `memory.externalDocPaths`

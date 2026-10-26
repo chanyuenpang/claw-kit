@@ -47,7 +47,7 @@ Together, the canonical config plus local override model gives longer-running pr
   - when higher than the current CLI, `claw context` reports CLI lagging information in `startupRecovery.versionSync`
 - `autoUpdate`
   - default: `true`
-  - when `true` and a newer published claw-kit exists, startup recovery tells the agent that the first action must be `claw-kit:update`
+  - when `true` and a newer published claw-kit exists, startup recovery tells the agent that the first action must be `update` (`claw-kit:update` only on Codex)
   - when `false`, startup recovery only reports the version mismatch and must not instruct the agent to perform the update
 - `id`
   - stable project id
@@ -65,7 +65,7 @@ Together, the canonical config plus local override model gives longer-running pr
   - when `false`, `claw plan create` seeds the smallest executable root plan in `process.active`
 - `externalPlanningSkill`
   - optional planning skill name for task 1 in planning-enabled seed plans
-  - use `null` to fall back to `claw-kit:planning`
+  - use `null` to fall back to `planning` (`claw-kit:planning` only on Codex)
 
 ### Knowledge writer
 
@@ -107,7 +107,7 @@ Together, the canonical config plus local override model gives longer-running pr
   - default: `true`
   - when `false`, returned `workflowGuidance` suppresses `goalMode`
 - `knowledgeWriter`
-  - `externalSkills`: ordered skill overrides for sequential finalizer prompts; an empty array uses `claw-kit:knowledge-writer`
+  - `externalSkills`: ordered skill overrides for sequential finalizer prompts; an empty array uses `knowledge-writer` (`claw-kit:knowledge-writer` only on Codex)
   - `model`: optional Codex model override for the asynchronous auto-doc writer; `null` uses the SDK default
   - `reasoningEffort`: writer reasoning depth; one of `minimal`, `low`, `medium`, `high`, or `xhigh`
   - `datedSectionsToKeep`: maximum complete dated evolution sections retained in each Truth or ADR document changed by the built-in writer; default `6`
@@ -392,7 +392,7 @@ When explaining project behavior:
 - the canonical-plus-personal split is part of the collaboration model, not just a schema detail
 - `planning = true` makes `plan create` start in `process.discussing` with one planning task; it either starts the resulting execution tasks or closes when planning itself resolves the request
 - `planning = false` makes `plan create` start directly in `process.active` with a minimal executable plan
-- `autoUpdate = true` lets startup recovery route the agent to `claw-kit:update` first when a newer published claw-kit version is available
+- `autoUpdate = true` lets startup recovery route the agent to `update` (`claw-kit:update` only on Codex) first when a newer published claw-kit version is available
 - `autoUpdate = false` keeps version drift informational only
 - `externalPlanningSkill` only selects the planning skill name used by the initial discussion guidance; it does not make the skill claw-aware
 - `gitnexus = true` opts a project into GitNexus-related integration behavior, but `claw-kit` still works without it

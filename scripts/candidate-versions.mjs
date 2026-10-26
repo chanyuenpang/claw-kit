@@ -122,10 +122,11 @@ export async function readPreparedCandidate(directory, sourceRoot) {
 
 /** Prepare only. No build, commit, remote writes, installation or trial. The
  * caller supplies any known published facts; absence is not a shadow gate. */
-export async function prepareCandidateVersions({ sourceRoot, artifacts = ["cli", "codex"], published = {}, targets = {}, candidateRoot } = {}) {
+export async function prepareCandidateVersions({ sourceRoot, artifacts = ["cli", "codex"], published = {}, targets = {}, candidateRoot, cliBase } = {}) {
   const root = path.resolve(sourceRoot), selected = [...new Set(artifacts)];
   assert(selected.length && selected.every(f => families.includes(f)), "Select supported artifact families.");
   assert(targets && typeof targets === "object" && !Array.isArray(targets) && Object.keys(targets).every(f => selected.includes(f)), "Explicit versions must target selected artifact families only.");
+  assert(cliBase === undefined || /^\d+\.\d+\.\d+$/.test(cliBase) && !selected.includes("cli"), "An explicit CLI base is only supported for adapter-only preparation.");
   assert(git(root, ["branch", "--show-current"]) === "main", "Candidate source must be on main.");
   assert(git(root, ["status", "--porcelain"]) === "", "Classify and commit source changes before preparing a new candidate.");
   const historyRoot = path.resolve(candidateRoot ?? path.join(root, "dist", "beta"));
@@ -149,7 +150,7 @@ export async function prepareCandidateVersions({ sourceRoot, artifacts = ["cli",
       const prefix = family === "cli" ? "v" : "v" + family + "-";
       used[family].push(...tags.filter(t => t.startsWith(prefix)).map(t => t.slice(prefix.length)).filter(v => numbers(v)?.length === (family === "cli" ? 3 : 4)));
     }
-    let base = current.cli;
+    let base = cliBase ?? current.cli;
     assert(numbers(base)?.length === 3, "Current CLI baseline is required.");
     const versions = {};
     if (selected.includes("cli")) {

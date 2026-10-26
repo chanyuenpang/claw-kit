@@ -122,12 +122,12 @@ function renderClawSessionStart(context: Record<string, unknown>): string {
     ].filter(Boolean).join("\n\n");
   }
   const project = context.project as { projectName?: unknown; projectId?: unknown } | undefined;
-  if (!project) return [OPENCODE_HOST_IDENTITY, runtimePrompt, "Load claw-kit:using-claw-kit. Small tasks may run directly without a plan. Creating a plan initializes the project automatically; claw init is optional explicit setup."].filter(Boolean).join("\n\n");
+  if (!project) return [OPENCODE_HOST_IDENTITY, runtimePrompt, "Load using-claw-kit. Small tasks may run directly without a plan. Creating a plan initializes the project automatically; claw init is optional explicit setup."].filter(Boolean).join("\n\n");
   const projectName = typeof project.projectName === "string" ? project.projectName : project.projectId;
   return [
     OPENCODE_HOST_IDENTITY,
     runtimePrompt,
-    `This session started inside claw project ${projectName || "project"}. Load claw-kit:using-claw-kit as the main workflow skill for this session.`,
+    `This session started inside claw project ${projectName || "project"}. Load using-claw-kit as the main workflow skill for this session.`,
     typeof context.searchGuidance === "string" ? context.searchGuidance : "",
   ].filter(Boolean).join("\n\n");
 }

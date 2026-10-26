@@ -39,7 +39,7 @@ Important difference:
 - template tasks may include template-only fields like `guidance`
 - runtime tasks should not persist template-only guidance fields
 
-`version` records the independent template-driver contract, not the claw-kit release version. Its maintenance procedure is owned exclusively by the distributed `claw-kit:create-claw-skill` package at `references/template-upgrade.md`; generated skills retain only a concise owner reference.
+`version` records the independent template-driver contract, not the claw-kit release version. Its maintenance procedure is owned exclusively by the distributed `create-claw-skill` package (`claw-kit:create-claw-skill` on Codex) at `references/template-upgrade.md`; generated skills retain only a concise owner reference.
 
 ## Knowledge Capture and Automatic Setup
 

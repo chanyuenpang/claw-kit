@@ -60,9 +60,13 @@ acknowledges completion through `knowledge.done`. Cindy does not use an
 errand or a Stop hook for knowledge finalization; legacy background jobs are
 diagnostic-only and are not launched.
 The Ghost Node worker owns a separate persistent CLI session transport per workdir/session ID. A successful `plan.done` releases that CLI after sending its response (including any knowledge-dispatch envelope), unless a newer request already began; quiescent unfinished-plan transports expire after 10 minutes without queued or running commands. The same session ID then reopens against retained CLI state. This does not stop the independent Orca finalizer Worker. `claw/session-transports` is a read-only worker RPC reporting workspace/session ID, direct child PID, active/idle/reclaiming state, pending count and close reason; `session-transport-*` events in the worker log record opens, exits and reclamation. `CLAW_CINDY_SESSION_IDLE_MS` may set a positive integer of at least 1000 ms for controlled tests or deployment tuning.
-Cindy's `will-user-message` hook appends an explicit Cindy Host identity and
-instruction to use the claw development workflow once per session, through the supported
-`event-verdict` rewrite. The user text is preserved; when appending would exceed
+Cindy's `whenToUse` identifies every session start as an entry scenario and names
+the public `using-claw-kit` skill. The `will-user-message` hook appends the Cindy
+Host identity and asks the agent to read that skill's `SKILL.md` at the path in
+its available skill list, then its Cindy route before beginning the task. This
+instruction is appended once per session through the supported `event-verdict`
+rewrite. The skill remains in the shared global pool, not in the plugin.
+The user text is preserved; when appending would exceed
 the Host's 16,000-character limit, the hook allows it unchanged and catalog
 identity remains the fallback. It performs no network or workflow calls and
 never blocks a message. A session receipt under `~/.agents/.claw-kit-cindy-hooks`

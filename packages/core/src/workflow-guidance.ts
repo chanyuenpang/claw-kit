@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { builtInSkillName } from "./skill-names.js";
 import { ClawError } from "./errors.js";
 import { activePlanTask, currentPlanTask, unfinishedPlanTask } from "./task-focus.js";
 import { resolveHostIntegrationProfile } from "./integration-contract.js";
@@ -290,10 +291,11 @@ function buildProjectConfigTemplateVars(projectConfig: ProjectConfig | null): Te
   return vars;
 }
 
-function buildWorkflowTemplateVars(projectConfig: ProjectConfig | null): TemplateVars {
+function buildWorkflowTemplateVars(projectConfig: ProjectConfig | null, host?: string): TemplateVars {
   return {
     ...buildProjectConfigTemplateVars(projectConfig),
-    planningSkill: projectConfig?.externalPlanningSkill?.trim() || "claw-kit:planning",
+    planningSkill: projectConfig?.externalPlanningSkill?.trim() || builtInSkillName("planning", host),
+    usingClawKitSkill: builtInSkillName("using-claw-kit", host),
   };
 }
 
@@ -425,7 +427,7 @@ export async function buildPlanWorkflowGuidance(params: {
     ? `Suggested truth targets: ${completionHooks.truthCandidate.suggestedTruthPaths.join(", ")}`
     : "";
   const vars: TemplateVars = {
-    ...buildWorkflowTemplateVars(projectConfig),
+    ...buildWorkflowTemplateVars(projectConfig, params.host),
     editBase,
     startBase,
     resumeBase,
@@ -534,6 +536,7 @@ export async function buildPlanWorkflowGuidance(params: {
         guidance: adaptLegacySessionGuidance(await applyTemplateTaskDoneGuidance({
             projectRoot,
             projectConfig,
+            host: params.host,
             plan,
             completedTaskIds,
             guidance,
@@ -594,6 +597,7 @@ export async function buildPlanWorkflowGuidance(params: {
         guidance: await applyTemplateTaskDoneGuidance({
           projectRoot,
           projectConfig,
+          host: params.host,
           plan,
           completedTaskIds,
           guidance,
@@ -707,6 +711,7 @@ async function currentTemplateTaskRecommendsPlanStart(params: {
 async function applyTemplateTaskDoneGuidance(params: {
   projectRoot?: string;
   projectConfig?: ProjectConfig | null;
+  host?: string;
   plan: PlanDocument;
   completedTaskIds?: number[];
   guidance: WorkflowGuidance;
@@ -731,7 +736,7 @@ async function applyTemplateTaskDoneGuidance(params: {
   if (completedTask) {
     const route = getTemplateTaskDoneGuidanceRoute(template, completedTask.id, completedTask.choiceId);
     if (route) {
-      const renderedRoute = renderTemplateValue(route, buildWorkflowTemplateVars(projectConfig));
+      const renderedRoute = renderTemplateValue(route, buildWorkflowTemplateVars(projectConfig, params.host));
       mergedGuidance = renderedRoute.mergeMode === "replace"
         ? replaceWorkflowGuidance(guidance, renderedRoute, plan)
         : overrideWorkflowGuidance(guidance, renderedRoute, plan);
@@ -871,7 +876,7 @@ const FALLBACK_SESSION_START_DEFAULT_LINES: string[] = [
   "This session started inside a .claw project: {{projectName}} ({{projectId}}).",
   ".claw directory: {{clawDir}}",
   "Follow the claw workflowGuidance return fields as the required next-step contract.",
-  "Load claw-kit:using-claw-kit as the main workflow skill for this session.",
+  "Load {{usingClawKitSkill}} as the main workflow skill for this session.",
 ];
 
 const FALLBACK_SESSION_START_RECOVERED: SessionStartRecoveredTemplate = {
@@ -909,6 +914,7 @@ export function buildSessionStartDefaultPrompt(params: SessionStartDefaultParams
   const template = resolveSessionStartTemplate(host).default;
   const lines = template?.lines ?? FALLBACK_SESSION_START_DEFAULT_LINES;
   const vars: TemplateVars = {
+    usingClawKitSkill: builtInSkillName("using-claw-kit", host),
     projectName: params.projectName,
     projectId: params.projectId,
     clawDir: params.clawDir,

@@ -90,6 +90,7 @@ test('Cindy uses the supported entry rewrite and keeps session-start work asynch
   assert.deepEqual(manifest.agent, { background: true });
   assert.doesNotMatch(source, /CINDY_CLAW_ENTRY_PROMPT|Use claw-kit:using-claw-kit/);
   assert.doesNotMatch(source, /First call the Ghost tool/);
+  assert.doesNotMatch(source + manifest.description, /claw-kit:(?:planning|<skill>)/);
   assert.match(source, /will-user-message/);
   assert.doesNotMatch(source, /sessionPrompts|injectedSessions|preparedSessions|preparingSessions/);
   assert.match(source, /msg\.name === 'did-session-created'/);

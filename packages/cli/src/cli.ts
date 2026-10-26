@@ -11,6 +11,7 @@ import { reconcileCompletionRefresh, recoverCompletionRefreshBestEffort } from "
 import { queueCompletionRefresh, runCompletionRefresh, runCommand, commandFailed, type CompletionRefreshResult } from "./completion-refresh.js";
 import { spawn, spawnSync } from "node:child_process";
 import {
+  builtInSkillName,
   buildDirectWorkflowGuidance,
   appendKnowledgeTaskConclusions,
   buildKnowledgeAssignmentTemplate,
@@ -2317,7 +2318,7 @@ async function runContextCommand(
     launchDailyMaintenance(cwd, ownerSessionKey, false);
   }
   let resolved = resolveContext(cwd, taskName);
-  const versionSync = syncProjectVersionWithCli(cwd, resolved.project);
+  const versionSync = syncProjectVersionWithCli(cwd, resolved.project, effectiveHost);
   if (versionSync.projectVersionUpdated) {
     corrected = true;
     if (!fixedPaths.includes("project.json")) {
@@ -2525,13 +2526,14 @@ type ContextVersionSyncResult = {
   cliVersionLagging: boolean;
   updateAvailable: boolean;
   autoUpdateEnabled: boolean;
-  updateSkill: "claw-kit:update";
+  updateSkill: string;
   latestPublishedVersion?: string | null;
   message?: string;
   warning?: ReturnType<typeof serializeFailure>;
 };
 
-function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resolveProjectContext>): ContextVersionSyncResult {
+function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resolveProjectContext>, host?: string): ContextVersionSyncResult {
+  const updateSkill = builtInSkillName("update", host);
   const projectVersion = normalizeVersionString(project.projectConfig?.version);
   const autoUpdateEnabled = project.projectConfig?.autoUpdate === true;
   if (!projectVersion || compareSemver(projectVersion, CLI_VERSION) < 0) {
@@ -2542,7 +2544,7 @@ function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resol
       return {
         cliVersion: CLI_VERSION, projectVersion, projectVersionAligned: false,
         projectVersionUpdated: false, cliVersionLagging: false, updateAvailable: false,
-        autoUpdateEnabled, updateSkill: "claw-kit:update",
+        autoUpdateEnabled, updateSkill,
         warning: serializeFailure(error, {
           fallbackCode: "PROJECT_VERSION_SYNC_FAILED", origin: "cli", operation: "context.version-sync",
         }),
@@ -2556,7 +2558,7 @@ function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resol
       cliVersionLagging: false,
       updateAvailable: false,
       autoUpdateEnabled,
-      updateSkill: "claw-kit:update",
+      updateSkill,
     };
   }
 
@@ -2570,7 +2572,7 @@ function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resol
       cliVersionLagging: false,
       updateAvailable: false,
       autoUpdateEnabled,
-      updateSkill: "claw-kit:update",
+      updateSkill,
     };
   }
 
@@ -2585,7 +2587,7 @@ function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resol
       cliVersionLagging: true,
       updateAvailable,
       autoUpdateEnabled,
-      updateSkill: "claw-kit:update",
+      updateSkill,
       latestPublishedVersion,
       message: `Project config version ${projectVersion} is newer than CLI ${CLI_VERSION}, and npm latest is only ${latestPublishedVersion}.`,
     };
@@ -2599,7 +2601,7 @@ function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resol
     cliVersionLagging: true,
     updateAvailable,
     autoUpdateEnabled,
-    updateSkill: "claw-kit:update",
+    updateSkill,
     latestPublishedVersion,
     message: updateAvailable
       ? `Published claw-kit ${latestPublishedVersion} is newer than local CLI ${CLI_VERSION}.`

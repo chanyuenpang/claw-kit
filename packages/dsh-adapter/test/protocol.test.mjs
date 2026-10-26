@@ -243,6 +243,8 @@ test("DSH prompt registration retains identity before context recovery succeeds"
   const source = fs.readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
   assert.match(source, /text:[^\n]*=>\s*guidanceByAgent\.get\(context\.scope\)\s*\|\|\s*renderGuidanceSnapshot\(undefined\)/);
   assert.match(renderGuidanceSnapshot(undefined), /^\[claw host\]\nplatform: dsh\n/);
+  assert.match(source, /load the `using-claw-kit` skill first/);
+  assert.doesNotMatch(source, /claw-kit:using-claw-kit/);
 });
 
 test("renderGuidanceSnapshot retains adapter identity without a workflow", () => {
@@ -270,7 +272,7 @@ test("renderGuidanceSnapshot emits version-sync notice when CLI lags", () => {
         latestPublishedVersion: "0.2.25",
         cliVersionLagging: true,
         updateAvailable: true,
-        updateSkill: "claw-kit:update",
+        updateSkill: "update",
       },
     },
     project: { projectName: "claw-kit" },
@@ -288,7 +290,8 @@ test("renderGuidanceSnapshot falls back to project context without a workflow", 
     searchGuidance: "Use claw search before rg.",
   });
   assert.match(text, /claw project Sample/);
-  assert.match(text, /Load the claw-kit:using-claw-kit skill as the main workflow skill/);
+  assert.match(text, /Load the using-claw-kit skill as the main workflow skill/);
+  assert.doesNotMatch(text, /claw-kit:using-claw-kit/);
   assert.match(text, /Use claw search before rg/);
   assert.doesNotMatch(text, /every claw plan, task, or subplan mutation must use claw_run/);
 });

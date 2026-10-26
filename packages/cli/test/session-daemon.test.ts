@@ -240,7 +240,7 @@ test("persistent session starts a planning plan through the typed protocol", asy
     assert.equal(output.plan.requirements.summary, "Keep the session resident.");
     assert.deepEqual(output.plan.requirements.acceptanceCriteria, ["The typed start succeeds."]);
     assert.deepEqual(output.plan.tasks.map((task) => [task.title, task.status]), [
-      ["Complete planning with claw-kit:planning", "done"],
+      ["Complete planning with planning", "done"],
       ["Implement resident transport", "pending"],
     ]);
   } finally {
