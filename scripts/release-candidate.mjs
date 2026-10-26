@@ -106,7 +106,7 @@ export async function packCandidate({ sourceRoot = repoRoot, directory } = {}) {
   const sourceRevision = cleanMain(sourceRoot);
   const preparation = await readPreparedCandidate(directory, sourceRoot);
   const selected = preparation.selected, versions = preparation.versions;
-  const version = (await json(path.join(sourceRoot, "package.json"))).version;
+  const version = selected.includes("cli") ? versions.cli.version : versions[selected[0]].version.split(".").slice(0, 3).join(".");
   const artifacts = path.join(directory, "artifacts");
   const lockPath = path.join(directory, ".pack.lock");
   const lock = await fs.open(lockPath, "wx");
