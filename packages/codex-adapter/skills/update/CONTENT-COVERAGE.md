@@ -1,9 +1,0 @@
-# Codex update content coverage
-
-- Trigger and claw entry routes: `SKILL.md`
-- Template compatibility: `TEMPLATE.json` declares the current claw CLI version
-- Published-version gate and ordered CLI/Codex refresh: `TEMPLATE.json`
-- Official marketplace identity and source constraints: all three workflow files
-- Download, installation and CLI/plugin version confirmation without fixed skill counts or installation audits: `TEMPLATE.json`, `non-claw-fallback.md`
-- No platform choice or cross-host route: `SKILL.md`, template rules
-- No-.claw or unavailable-claw execution: `non-claw-fallback.md`
