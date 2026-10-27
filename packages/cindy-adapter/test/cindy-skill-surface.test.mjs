@@ -91,6 +91,9 @@ test('Cindy uses the supported entry rewrite and keeps session-start work asynch
   assert.doesNotMatch(source, /CINDY_CLAW_ENTRY_PROMPT|Use claw-kit:using-claw-kit/);
   assert.doesNotMatch(source, /First call the Ghost tool/);
   assert.doesNotMatch(source + manifest.description, /claw-kit:(?:planning|<skill>)/);
+  assert.match(manifest.description, /Claw workflow entry: using-claw-kit/);
+  assert.match(source, /Claw workflow entry: using-claw-kit/);
+  assert.doesNotMatch(source + manifest.description, /explicit shared skill installation|for example planning|e\.g\. planning|Missing skills are advisory; use skills_status and explicitly install_skills/);
   assert.match(source, /will-user-message/);
   assert.doesNotMatch(source, /sessionPrompts|injectedSessions|preparedSessions|preparingSessions/);
   assert.match(source, /msg\.name === 'did-session-created'/);
