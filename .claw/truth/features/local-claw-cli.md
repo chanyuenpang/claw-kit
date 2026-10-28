@@ -99,6 +99,8 @@
 - Local installation on this machine is currently refreshed through `npm run install:local-cli`.
 - `update` is intentionally excluded from shared-skill synchronization. Codex and OpenCode independently maintain their same-named adapter packages; `.claw/truth/features/host-specific-update-skills.md` is the current owner of that contract.
 - 在 `@veewo/claw` 刚发布后的短暂窗口里，`npm run install:local-cli` 可能会先撞到 npm registry 传播延迟；当 `npm view @veewo/claw version` 已经返回目标版本后，重试一次安装通常就能收敛到最终本机状态。
+- 在安装了系统 libvips 的 host（本机为 8.18.7）上，全局 `@veewo/claw` 安装/升级需要 `SHARP_IGNORE_GLOBAL_LIBVIPS=1`：`@veewo/claw-core` 经 `@huggingface/transformers` 3.8.1 依赖 `sharp` 0.34.5，安装脚本检测到系统 libvips 后会退回源码编译，缺少 `node-addon-api` 时失败；设置该变量后改用预编译二进制，`sharp` 与 `onnxruntime-node` 均可正常加载。0.2.61 → 0.2.67 的实际升级验证了这条恢复路径。
+- 当 `.claw/project.json` 的 `version` 低于当前 CLI 时，`claw context` 会经 `syncProjectVersionWithCli()` → `updateProjectJsonVersion()` 直接改写该字段为 CLI 版本，并把这次改写计入 `startupRecovery.corrected` 与 `fixedPaths` 中的 `project.json`；这是协议版本元数据对齐，不是本地升级，但会让仓库留下未提交的 `project.json` 版本 diff。锚点：`packages/cli/src/cli.ts`。
 - 在当前这台 Codex host 上，`0.1.59` 的本地 update-first follow-up 已验证闭环：先运行 `npm run install:local-cli` 刷新全局 CLI，再运行 `npm run install:codex-plugin` 刷新本地 Codex plugin surface；完成态证据是 `claw --version = 0.1.59`、`npm list -g @veewo/claw --depth=0 = @veewo/claw@0.1.59`、Codex cache 目录为 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.59+codex.20260711014244`，且该缓存副本的 `.codex-plugin/plugin.json` `version` 与目录版本一致。
 - 当前这台 Windows 机器的已验证刷新结果是全局 `@veewo/claw@0.1.52`。
 - That install script removes prior global installs and links before running `npm install -g @veewo/claw`, so the final global state reflects the package registry install rather than an older link.

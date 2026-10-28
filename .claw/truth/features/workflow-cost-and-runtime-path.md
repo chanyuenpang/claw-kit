@@ -263,9 +263,9 @@
 
 #### `projectVersionAligned` 诊断语义 bug
 
-- `claw context` 在 project version 与 CLI version 都为 `0.1.70` 时仍返回 `projectVersionAligned: false`。这不是实际 runtime drift，而是 diagnostic / contract semantic bug。
-- primary code anchor 是 `packages/cli/src/cli.ts` 的 `syncProjectVersionWithCli`：version comparison `=== 0` 的相等分支硬编码返回 `projectVersionAligned: false`。调查时应先核对双侧真实版本，再解释该字段，不能把这个 false 单独当成漂移证据。
-- 本轮只沉淀诊断事实，没有获得 source fix 授权；因此该 bug 仍是已知陷阱，不应写成已修复行为。
+- `0.1.70` 实测：`claw context` 在 project version 与 CLI version 都为 `0.1.70` 时仍返回 `projectVersionAligned: false`。这不是实际 runtime drift，而是 diagnostic / contract semantic bug。
+- primary code anchor 是 `packages/cli/src/cli.ts` 的 `syncProjectVersionWithCli`：当时 version comparison `=== 0` 的相等分支硬编码返回 `projectVersionAligned: false`。调查时应先核对双侧真实版本，再解释该字段，不能把这个 false 单独当成漂移证据。
+- 该缺陷已由 `0.1.76` 发布提交 `10881b9` 修复：相等分支现在返回 `projectVersionAligned: true`，`projectVersionUpdated` 单独标识本轮回写；上面的 false 观测只保留为 `0.1.70` 版本线的历史证据，当前版本不应再按未修复行为解释该字段。
 
 #### 验证锚点与检索词
 
