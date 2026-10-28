@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { buildMemoryIndex, ClawError, DEFAULT_MAX_TASKS_TO_KEEP, enforceTaskRetention, findTaskDirectory, resolveProjectContext, writeJsonFileAtomic, type ProjectConfig } from "@veewo/claw-core";
+import { buildMemoryIndex, resolveProjectMemoryEmbeddingConfig, ClawError, DEFAULT_MAX_TASKS_TO_KEEP, enforceTaskRetention, findTaskDirectory, resolveProjectContext, writeJsonFileAtomic, type ProjectConfig } from "@veewo/claw-core";
 import { withoutInvocationHost } from "./invocation-host.js";
 
 export type CompletionRefreshResult = {
@@ -52,7 +52,7 @@ type CompletionRefreshStatus = ({
   finishedAt: string;
   cwd: string;
   taskName: string;
-  memory: {
+  memory?: {
     project: ReturnType<typeof buildMemoryIndex>;
   };
   taskRetention?: ReturnType<typeof enforceTaskRetention>;
@@ -118,7 +118,7 @@ export function queueCompletionRefresh(input: {
   const startedAt = new Date().toISOString();
   const logFile = createCompletionRefreshStatusFile(project.clawDir, input.statusLabel ?? input.taskName, startedAt);
   const statusFile = input.statusFile ?? logFile;
-  const operations: CompletionRefreshResult["asyncRefresh"]["operations"] = ["memory.reindex.project"];
+  const operations: CompletionRefreshResult["asyncRefresh"]["operations"] = resolveProjectMemoryEmbeddingConfig(project) ? ["memory.reindex.project"] : [];
   if (includeTaskRetention) {
     operations.unshift("task.retention");
   }
@@ -306,7 +306,10 @@ export function runCompletionRefresh(input: { cwd: string; taskName: string; sta
       }
       if (!taskRetention && operations.includes("task.retention")) taskRetention = enforceTaskRetention(resolveProjectContext(cwd), taskName);
       dirtyHash = computeCompletionDirtyHash(cwd, taskName, operations);
-      projectMemory = buildMemoryIndex({ cwd, scope: "project" });
+      if (operations.includes("memory.reindex.project")) {
+        // Core re-reads the effective switch, including for pre-existing queued work.
+        projectMemory = buildMemoryIndex({ cwd, scope: "project" });
+      }
       gitnexus = operations.includes("gitnexus.refresh")
         ? refreshGitNexusIfEnabled(cwd, resolveProjectContext(cwd).projectConfig)
         : {
@@ -336,9 +339,7 @@ export function runCompletionRefresh(input: { cwd: string; taskName: string; sta
       cwd,
       taskName,
       operations,
-      memory: {
-        project: projectMemory!,
-      },
+      ...(projectMemory ? { memory: { project: projectMemory } } : {}),
       ...(taskRetention ? { taskRetention } : {}),
       gitnexus,
       dirtyHash,

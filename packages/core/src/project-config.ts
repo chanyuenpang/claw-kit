@@ -176,6 +176,7 @@ function parseKeyPath(keyPath: string): string[] {
     (keys.length === 2 && keys[0] === "knowledgeWriter" && WRITER_LEAVES.has(keys[1]!)) ||
     (keys.length === 3 && keys[0] === "knowledgeWriterByHost" && HOSTS.has(keys[1]!) && WRITER_LEAVES.has(keys[2]!)) ||
     (keys.length === 2 && keys[0] === "memory" && MEMORY_LEAVES.has(keys[1]!)) ||
+    (keys.length === 3 && keys[0] === "memory" && keys[1] === "embedding" && keys[2] === "enabled") ||
     (keys.length === 2 && keys[0] === "var" && keys[1]!.length > 0);
   if (!approved) throw new ClawError("PROJECT_CONFIG_KEY_INVALID", "Unsupported project configuration key path \"" + keyPath + "\".", { path: keyPath });
   return keys;

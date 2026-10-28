@@ -301,6 +301,7 @@ test("cli context generates search guidance from enabled embedding and GitNexus 
     const projectJsonPath = path.join(root, ".claw", "project.json");
     const projectConfig = JSON.parse(fs.readFileSync(projectJsonPath, "utf-8")) as JsonRecord;
     (projectConfig.memory as JsonRecord).enabled = testCase.memoryEnabled;
+    ((projectConfig.memory as JsonRecord).embedding as JsonRecord).enabled = true;
     projectConfig.gitnexus = testCase.gitnexus;
     fs.writeFileSync(projectJsonPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
 
@@ -314,6 +315,15 @@ test("cli context generates search guidance from enabled embedding and GitNexus 
       assert.match(guidance, /exact files or symbols/i);
     }
   }
+});
+
+test("cli context describes default-off document discovery instead of semantic narrowing", () => {
+  const root = createFixture("context-discovery-guidance");
+  runClaw(["init", "--name", "Discovery Guidance"], root);
+  const result = runClaw(["context"], root);
+  assert.match(String(result.searchGuidance), /discover document locations/);
+  assert.match(String(result.searchGuidance), /no vector index refresh/i);
+  assert.doesNotMatch(String(result.searchGuidance), /narrow the document search scope/);
 });
 
 test("cli context leaves an uninitialized directory unchanged", () => {

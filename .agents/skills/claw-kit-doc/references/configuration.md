@@ -42,6 +42,7 @@ Structured settings remain nested:
     "autoUpdate": true,
     "externalDocPaths": ["docs/"],
     "embedding": {
+      "enabled": false,
       "provider": "local",
       "model": "jinaai/jina-embeddings-v2-base-zh",
       "outputDimensionality": 768
@@ -57,7 +58,7 @@ Supported project surfaces include:
 - `defaultPlanTemplate` and project template variables under `var`;
 - `contextPaths` and `gitnexus`;
 - `memory.enabled`, `memory.autoUpdate`, `memory.externalDocPaths`, and
-  `memory.embedding`;
+  `memory.embedding` (including `memory.embedding.enabled`);
 - `knowledgeWriter.externalSkills`, `model`,
   `reasoningEffort`, and `datedSectionsToKeep`;
 - `knowledgeWriterByHost` per-host field overrides (see below).
@@ -82,6 +83,19 @@ a newer project. `maxTasksToKeep` defaults to 9 archived tasks.
 template only when the command does not provide an explicit template.
 Project-defined template values belong under `var`; do not add unknown
 top-level fields.
+
+`memory.embedding.enabled` defaults to `false`; only explicit `true` enables
+embedding. This also applies to existing provider/model configurations after
+upgrade: opt in explicitly to retain semantic search. Disabling embedding keeps
+finalization, Truth/ADR writing, and external document updates enabled under their
+existing controls. It skips model warmup, vector generation and index refresh;
+existing vector databases and model caches are left untouched.
+
+With embedding disabled, `claw search` succeeds in `discovery` mode and returns
+absolute Truth (including ADR) and configured external document locations for
+native file/text search, including existence and file/directory information.
+It does not report unavailable or require an index refresh. `memory.enabled` is
+still a separate overall memory control; do not disable it just to avoid embedding.
 
 The default local embedding model is
 `jinaai/jina-embeddings-v2-base-zh` with 768 output dimensions. Keep model and

@@ -79,6 +79,7 @@ test("cli search accepts a positional query for project recall", () => {
           enabled: true,
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
             local: {
@@ -143,6 +144,10 @@ test("cli search --dir temporarily searches another project without changing cwd
   runClaw(["init", "--name", "Search Dir Target", "--ext-path", "docs/"], targetRoot, env);
   fs.mkdirSync(path.join(targetRoot, "docs"), { recursive: true });
   fs.writeFileSync(path.join(targetRoot, "docs", "guide.md"), "cross-domain recall marker\n", "utf-8");
+  const targetConfigPath = path.join(targetRoot, ".claw", "project.json");
+  const targetConfig = JSON.parse(fs.readFileSync(targetConfigPath, "utf8"));
+  targetConfig.memory.embedding.enabled = true;
+  fs.writeFileSync(targetConfigPath, JSON.stringify(targetConfig));
   runClaw(["search", "index", "--refresh"], targetRoot, env);
 
   const searchResult = runClaw(
@@ -200,6 +205,7 @@ test("cli search reuses one persistent embedding session across commands", { con
         enabled: true,
         externalDocPaths: ["docs/"],
         embedding: {
+          enabled: true,
           provider: "local",
           model: "Snowflake/snowflake-arctic-embed-xs",
           local: { modelCacheDir: path.join(root, ".model-cache"), device: "cpu" },
@@ -218,6 +224,12 @@ test("cli search reuses one persistent embedding session across commands", { con
   assert.equal((first.telemetry as JsonRecord).embeddingRuntime, "persistent_daemon");
   assert.equal((second.telemetry as JsonRecord).embeddingRuntime, "persistent_daemon");
   assert.equal((first.telemetry as JsonRecord).queryEmbedding, "generated");
+  fs.writeFileSync(path.join(root, ".claw", "project-override.json"), JSON.stringify({ memory: { embedding: { enabled: false } } }));
+  const disabled = runClaw(["search", "--query", "third semantic lookup after disabling"], root, env);
+  assert.equal(disabled.mode, "discovery");
+  assert.equal(disabled.unavailable, undefined);
+  assert.equal((disabled.telemetry as JsonRecord).queryEmbedding, "skipped");
+  assert.ok(((disabled.discovery as JsonRecord).locations as JsonRecord[]).some((entry) => entry.path === path.join(root, "docs")));
 
   const statePath = path.join(runtimeDir, "state.json");
   await waitForCondition(() => !fs.existsSync(statePath), 8000);
@@ -241,14 +253,19 @@ test("cli search rejects task-local scope flags", () => {
   assert.match(String(payload.message), /project-scoped only/i);
 });
 
-test("cli search returns advisory empty results without creating a vector index", () => {
+test("cli search defaults to successful document discovery without a vector index", () => {
   const root = createFixture("search-requires-vectors");
   runClaw(["init", "--name", "Search Requires Vectors"], root);
 
   const result = runClaw(["search", "--query", "alpha"], root);
   assert.deepEqual(result.results, []);
-  assert.equal((result.unavailable as JsonRecord).code, "MEMORY_VECTOR_INDEX_REQUIRED");
-  assert.match(String((result.unavailable as JsonRecord).nextStep), /repository search/i);
+  assert.equal(result.ok, true);
+  assert.equal(result.mode, "discovery");
+  assert.equal(result.unavailable, undefined);
+  const discovery = result.discovery as JsonRecord;
+  assert.ok((discovery.locations as JsonRecord[]).some((entry) => entry.path === path.join(root, ".claw", "truth")));
+  assert.match(String(discovery.nextStep), /native file\/text search/i);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "memory.sqlite")), false);
 });
 
 test("cli search index refresh returns project index metadata and embedding config", () => {
@@ -271,6 +288,7 @@ test("cli search index refresh returns project index metadata and embedding conf
           enabled: true,
           externalDocPaths: [],
           embedding: {
+            enabled: true,
             provider: "openai",
             model: "text-embedding-3-small",
             remote: {
@@ -324,6 +342,7 @@ test("cli search index refresh returns local vector index metadata and only inde
           enabled: true,
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
             local: {

@@ -216,6 +216,8 @@ export function compactClawOutput(output: Record<string, unknown> | undefined, o
       return entry;
     });
   }
+  if (output.mode !== undefined) visible.mode = output.mode as JsonValue;
+  if (output.discovery !== undefined) visible.discovery = output.discovery as JsonValue;
   if (output.unavailable !== undefined) visible.unavailable = output.unavailable as JsonValue;
   if (output.count !== undefined) visible.count = output.count as JsonValue;
   // plan.show --simple returns a minimal projection {status, goal, tasks};

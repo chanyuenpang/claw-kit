@@ -424,6 +424,7 @@ function cloneValue(value: unknown): unknown {
 }
 
 function normalizeMemoryEmbeddingConfig(value: MemoryEmbeddingConfig | null | undefined): MemoryEmbeddingConfig | null {
+  if (value === null) return null;
   if (!value || typeof value !== "object") {
     return defaultLocalEmbeddingConfig();
   }
@@ -435,6 +436,7 @@ function normalizeMemoryEmbeddingConfig(value: MemoryEmbeddingConfig | null | un
   }
 
   return {
+    enabled: value.enabled === true,
     provider,
     model,
     ...(value.remote
@@ -477,6 +479,7 @@ function normalizeMemoryEmbeddingConfig(value: MemoryEmbeddingConfig | null | un
 
 function defaultLocalEmbeddingConfig(): MemoryEmbeddingConfig {
   return {
+    enabled: false,
     provider: "local",
     model: DEFAULT_LOCAL_EMBEDDING_MODEL,
     outputDimensionality: resolveDefaultLocalEmbeddingDimensions(DEFAULT_LOCAL_EMBEDDING_MODEL),

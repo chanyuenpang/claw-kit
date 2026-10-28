@@ -92,7 +92,8 @@ Together, the canonical config plus local override model gives longer-running pr
   - markdown-oriented recall sources for `claw search`
 - `memory.embedding`
   - embedding provider and index behavior for project recall
-  - the minimal local default only needs `provider` and `model`
+  - `enabled` defaults to `false`; only explicit `true` enables semantic search
+  - retain `provider` and `model` alongside the switch; disabling does not discard model options
 
 ### GitNexus
 
@@ -146,6 +147,7 @@ Older nested inputs should be rewritten into the flat fields above during protoc
     "autoUpdate": true,
     "externalDocPaths": [],
     "embedding": {
+      "enabled": false,
       "provider": "local",
       "model": "jinaai/jina-embeddings-v2-base-zh",
       "outputDimensionality": 768
@@ -266,6 +268,7 @@ With this config, planning-enabled default plans still start in `process.discuss
       "architecture/"
     ],
     "embedding": {
+      "enabled": false,
       "provider": "local",
       "model": "jinaai/jina-embeddings-v2-base-zh",
       "outputDimensionality": 768
@@ -352,6 +355,7 @@ With this config, planning-enabled default plans still start in `process.discuss
   "memory": {
     "externalDocPaths": [],
     "embedding": {
+      "enabled": true,
       "provider": "openai",
       "model": "text-embedding-3-small",
       "remote": {
@@ -375,7 +379,10 @@ With this config, planning-enabled default plans still start in `process.discuss
 - `claw search` is recall over project docs, not code search
 - `memory.enabled = false` disables project memory, embedding refresh, and `claw search`
 - `memory.autoUpdate` is distinct from top-level `autoUpdate`; it governs existing external documentation after knowledge finalization
-- `claw search index --refresh` expects `memory.embedding` to be configured
+- embedding is opt-in, including existing provider/model configurations after upgrade: set `memory.embedding.enabled = true` to keep semantic search
+- with embedding disabled, `claw search` succeeds in `discovery` mode with absolute Truth (including ADR) and configured external document locations for native file/text search; missing paths are identified, not errors
+- disabling embedding preserves finalizer, Truth/ADR writing and external document updates under their existing controls; it does not load/download models, generate vectors or touch existing vector databases
+- `claw search index --refresh` skips work when embedding is disabled; enable and configure `memory.embedding` to refresh vectors
 - local embedding defaults to `jinaai/jina-embeddings-v2-base-zh` at 768 dimensions
 - `Snowflake/snowflake-arctic-embed-m-v2.0` remains a 768-dimensional higher-resource alternative
 - `Snowflake/snowflake-arctic-embed-xs` remains a 384-dimensional low-resource or English-oriented alternative, but is not recommended for Chinese-heavy recall because it regressed substantially on the claw search Chinese comparison corpus

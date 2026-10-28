@@ -289,7 +289,8 @@ nextsteps、notes 或 commandHints。
    `using-claw-kit` 主入口没有把它写成所有代码调查的通用规则。SessionStart 动态提示
    也只在能力开启时使用 “When useful”，不足以保证先 search 再 `rg`。
 2. `memory.enabled` 曾在 canonical config reference 与 `config` Skill 中互相矛盾；
-   现已统一为项目记忆、任务记忆、embedding refresh 和 `claw search` 的 master switch。
+   它仍是 memory 总开关；独立的 `memory.embedding.enabled` 默认关闭，仅控制向量运行路径。
+   embedding 关闭时 `claw search` 成功返回文档位置供传统搜索，不关闭 finalizer 或外部文档更新。
 3. `codex-startup-recovery.md` 曾要求主 agent 在 `plan done` 前 deposit Truth/ADR；
    现已改为 adapter-owned Stop/finalizer closeout。
 4. Core/adapter 设计文档中的部分 Cindy lifecycle 映射属于进行中设计，不能作为已完成

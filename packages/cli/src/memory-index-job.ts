@@ -1,5 +1,5 @@
 import { Worker } from "node:worker_threads";
-import { ClawError, buildMemoryIndex, type MemoryIndexResult } from "@veewo/claw-core";
+import { ClawError, buildMemoryIndex, resolveProjectContext, resolveProjectMemoryEmbeddingConfig, type MemoryIndexResult } from "@veewo/claw-core";
 
 type WorkerMessage = { ok?: boolean; result?: MemoryIndexResult; message?: string; code?: string };
 
@@ -8,7 +8,7 @@ type WorkerMessage = { ok?: boolean; result?: MemoryIndexResult; message?: strin
  * behind it. One-shot commands stay on the caller.
  */
 export function buildMemoryIndexWithoutBlocking(cwd: string): Promise<MemoryIndexResult> {
-  if (process.env.CLAW_IN_SESSION_DAEMON !== "1") {
+  if (process.env.CLAW_IN_SESSION_DAEMON !== "1" || !resolveProjectMemoryEmbeddingConfig(resolveProjectContext(cwd))) {
     return Promise.resolve(buildMemoryIndex({ cwd, scope: "project" }));
   }
   const workerUrl = new URL("./memory-index-worker.js", import.meta.url);

@@ -127,9 +127,9 @@ export const configGuideContent = {
         id: "memory.embedding",
         group: "Memory",
         title: "How embedding-backed recall is configured",
-        summary: "Defines the embedding provider and model used when memory indexing is enabled.",
-        detail: "The local default is jinaai/jina-embeddings-v2-base-zh at 768 dimensions. Snowflake/snowflake-arctic-embed-m-v2.0 remains a higher-resource 768-dimensional alternative. Snowflake/snowflake-arctic-embed-xs is a 384-dimensional low-resource or English-oriented alternative, but it is not recommended for Chinese-heavy recall.",
-        example: `"memory": { "embedding": { "provider": "local", "model": "jinaai/jina-embeddings-v2-base-zh", "outputDimensionality": 768 } }`
+        summary: "Explicitly opts into embedding-backed recall with enabled: true; disabled by default.",
+        detail: "When disabled, claw search succeeds with document locations for native text search; finalization and external-document updates remain active. Existing provider/model configurations must opt in explicitly after upgrade. The local default is jinaai/jina-embeddings-v2-base-zh at 768 dimensions. Snowflake/snowflake-arctic-embed-m-v2.0 remains a higher-resource 768-dimensional alternative. Snowflake/snowflake-arctic-embed-xs is a 384-dimensional low-resource or English-oriented alternative, but it is not recommended for Chinese-heavy recall.",
+        example: `"memory": { "embedding": { "enabled": false, "provider": "local", "model": "jinaai/jina-embeddings-v2-base-zh", "outputDimensionality": 768 } }`
       },
       {
         id: "gitnexus",
@@ -264,9 +264,9 @@ export const configGuideContent = {
         id: "memory.embedding",
         group: "记忆",
         title: "embedding 配置怎么写",
-        summary: "定义 memory 开启时使用的 embedding provider 和 model。",
-        detail: "本地默认模型是 768 维的 jinaai/jina-embeddings-v2-base-zh。Snowflake/snowflake-arctic-embed-m-v2.0 是资源占用更高的 768 维候选；Snowflake/snowflake-arctic-embed-xs 是面向低资源或英文场景的 384 维候选，但中文语义召回明显退化，不建议用于中文为主的项目。",
-        example: `"memory": { "embedding": { "provider": "local", "model": "jinaai/jina-embeddings-v2-base-zh", "outputDimensionality": 768 } }`
+        summary: "独立 embedding 开关默认关闭，仅 enabled: true 时启用语义检索。",
+        detail: "关闭时 claw search 正常返回文档位置，供传统搜索；finalizer 和外部文档更新不受影响。升级后已有 provider/model 配置也需显式开启。 本地默认模型是 768 维的 jinaai/jina-embeddings-v2-base-zh。Snowflake/snowflake-arctic-embed-m-v2.0 是资源占用更高的 768 维候选；Snowflake/snowflake-arctic-embed-xs 是面向低资源或英文场景的 384 维候选，但中文语义召回明显退化，不建议用于中文为主的项目。",
+        example: `"memory": { "embedding": { "enabled": false, "provider": "local", "model": "jinaai/jina-embeddings-v2-base-zh", "outputDimensionality": 768 } }`
       },
       {
         id: "gitnexus",

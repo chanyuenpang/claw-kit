@@ -7,7 +7,8 @@ import { initProject, writePlan, editPlan, showPlan, resolveProjectContext, list
 import { startSessionDaemon } from "../dist/session-daemon.js";
 import { registerReportCollector } from "../dist/report-collector-registry.js";
 import { reconcileCompletionRefresh } from "../dist/completion-refresh-recovery.js";
-import { assert, fs, path, thisDir, buildSpawnEnv, createFixture, runClaw, waitForCompletionRefreshStatus, waitForCondition } from "./cli-test-support.js";
+import { runCompletionRefresh } from "../dist/completion-refresh.js";
+import { assert, fs, path, thisDir, buildSpawnEnv, createFixture, runClaw, waitForCompletionRefreshStatus, waitForCondition, type JsonRecord } from "./cli-test-support.js";
 
 const previousMock = process.env.CLAW_EMBEDDING_MOCK;
 before(() => { process.env.CLAW_EMBEDDING_MOCK = "1"; });
@@ -20,7 +21,10 @@ function receipts(root: string): string[] {
 async function settled(file: string) {
   const status = await waitForCompletionRefreshStatus(file, 30_000);
   assert.equal(status.ok, true, JSON.stringify(status));
-  assert.ok((status.memory as { project?: unknown })?.project, "the actual indexing runner, not an envelope, completed");
+  assert.ok(status.finishedAt, "the real refresh runner, not a queued envelope, completed");
+  if ((status.operations as string[]).includes("memory.reindex.project")) {
+    assert.ok((status.memory as { project?: unknown })?.project);
+  }
   return status;
 }
 async function idle(root: string) {
@@ -29,14 +33,23 @@ async function idle(root: string) {
 function project(name: string) {
   const root = createFixture(name);
   initProject({ cwd: root, projectName: name, planning: false });
+  const configPath = path.join(root, ".claw", "project.json");
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  config.memory.embedding.enabled = true;
+  fs.writeFileSync(configPath, JSON.stringify(config));
   return root;
 }
 
-test("daemon terminal and successful knowledge.done execute the real refresh worker automatically", async () => {
-  const root = project("refresh space & args");
+for (const embeddingEnabled of [false, true]) test(`daemon finalization preserves external documents with embedding enabled=${embeddingEnabled}`, async () => {
+  const root = project("refresh space & args " + embeddingEnabled);
   const configPath = path.join(root, ".claw", "project.json");
   const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
   config.knowledgeWriter.executionPolicy = "subagent";
+  config.memory.embedding.enabled = embeddingEnabled;
+  config.memory.externalDocPaths = ["docs"];
+  fs.mkdirSync(path.join(root, "docs"));
+  const handbook = path.join(root, "docs", "handbook.md");
+  fs.writeFileSync(handbook, "Previous external documentation.");
   fs.writeFileSync(configPath, JSON.stringify(config));
   const collector = path.join(root, "collector.cjs");
   fs.writeFileSync(collector, 'const fs = require("node:fs"); const r = JSON.parse(fs.readFileSync(0, "utf8")); fs.writeFileSync(r.stagingReportPath, "evidence");');
@@ -53,13 +66,18 @@ test("daemon terminal and successful knowledge.done execute the real refresh wor
     await idle(root);
     const jobPath = listKnowledgeFinalizationJobs(resolveProjectContext(root))[0]!;
     const job = readKnowledgeFinalizationJob(jobPath);
+    assert.deepEqual(job.docUpdate, { externalDocPaths: ["docs"] });
     const claim = await session.command({ operation: "knowledge.claim", input: { finalizeId: job.finalizeId } }) as { claimToken: string };
     fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "Knowledge deposited after plan refresh.");
+    // Simulate completion of the unchanged writer assignment, not merely dispatch.
+    fs.writeFileSync(handbook, "Updated external documentation after canonical knowledge.");
     const input = { finalizeId: job.finalizeId, claimToken: claim.claimToken, status: "succeeded" as const, result: "Deposited" };
     await session.command({ operation: "knowledge.done", input });
     const knowledgeReceipt = path.join(receiptDir(root), createHash("sha256").update("knowledge:" + job.finalizeId).digest("hex") + ".json");
     const status = await settled(knowledgeReceipt);
-    assert.deepEqual(status.operations, ["memory.reindex.project"]);
+    assert.deepEqual(status.operations, embeddingEnabled ? ["memory.reindex.project"] : []);
+    assert.equal(fs.readFileSync(handbook, "utf8"), "Updated external documentation after canonical knowledge.");
+    assert.equal(fs.existsSync(path.join(root, ".claw", "memory.sqlite")), embeddingEnabled);
     await idle(root);
     const before = fs.readFileSync(jobPath, "utf8");
     // Simulate lost intent after the canonical successful commit, without replaying assignments.
@@ -124,6 +142,27 @@ test("terminal plan commit without intent recovers through stateless CLI context
   const receipt = fs.readFileSync(receipts(root)[0]!, "utf8");
   assert.deepEqual(reconcileCompletionRefresh(root), []);
   assert.equal(fs.readFileSync(receipts(root)[0]!, "utf8"), receipt);
+});
+
+test("old queued vector refresh respects the current disabled switch without touching the database", async () => {
+  const root = project("old-embedding-queue");
+  fs.writeFileSync(path.join(root, ".claw", "project-override.json"), JSON.stringify({ memory: { embedding: { enabled: false } } }));
+  const storePath = path.join(root, ".claw", "memory.sqlite");
+  fs.writeFileSync(storePath, "previous database bytes");
+  const file = path.join(receiptDir(root), "old-queue.json");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ ok: true, queued: true, cwd: root, taskName: "orphan",
+    startedAt: "2000-01-01T00:00:00.000Z", operations: ["memory.reindex.project"] }));
+  const flight = path.join(root, ".claw", "logs", "completion-refresh", "inflight.lock");
+  fs.mkdirSync(flight, { recursive: true });
+  fs.writeFileSync(path.join(flight, "state.json"), JSON.stringify({ schemaVersion: 1,
+    queuedAt: "2000-01-01T00:00:00.000Z", leaderStatusFile: file, statusFiles: [file],
+    requestedDirtyHash: "old", operations: ["memory.reindex.project"] }));
+  runCompletionRefresh({ cwd: root, taskName: "orphan", statusFile: file });
+  const status = await settled(file);
+  assert.equal(((status.memory as JsonRecord).project as JsonRecord).skipped, "embedding_disabled");
+  assert.equal(fs.readFileSync(storePath, "utf8"), "previous database bytes");
+  await idle(root);
 });
 
 test("orphan queued, interrupted running, and failed refresh statuses resume actual indexing", async () => {

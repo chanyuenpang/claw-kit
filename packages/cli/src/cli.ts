@@ -50,6 +50,7 @@ import {
   resolveSeedPlanTemplate,
   searchMemoryAsync,
   warmProjectMemoryEmbedding,
+  resolveProjectMemoryEmbeddingConfig,
   showPlan,
   createSubplan,
   createPlanRef,
@@ -1759,7 +1760,7 @@ function directKnowledgeConfigFingerprint(input: {
     })),
     externalDocPaths: input.docUpdate?.externalDocPaths ?? [],
     gitnexus: input.project.projectConfig?.gitnexus === true,
-    memoryRefresh: input.project.projectConfig?.memory?.enabled !== false,
+    memoryRefresh: resolveProjectMemoryEmbeddingConfig(input.project) !== null,
   };
   return `sha256:${createHash("sha256").update(JSON.stringify(payload)).digest("hex")}`;
 }
@@ -2361,12 +2362,11 @@ async function runContextCommand(
 }
 
 function launchProjectEmbeddingWarmup(project: ProjectContext): void {
-  const memory = project.projectConfig?.memory;
+  const embedding = resolveProjectMemoryEmbeddingConfig(project);
   if (
     process.env.CLAW_EMBEDDING_WARMUP_DISABLE_LAUNCH === "1"
     || process.env.CLAW_KNOWLEDGE_FINALIZER === "1"
-    || memory?.enabled === false
-    || memory?.embedding?.provider !== "local"
+    || embedding?.provider !== "local"
     || process.env.CLAW_EMBEDDING_PERSISTENT_WORKER === "0"
     || !fs.existsSync(path.join(project.clawDir, "memory.sqlite"))
   ) {
@@ -2487,7 +2487,7 @@ function buildContextSearchGuidance(context: Record<string, unknown>, style: "de
   const project = asJsonRecord(context.project);
   const projectConfig = asJsonRecord(project?.projectConfig);
   const memory = asJsonRecord(projectConfig?.memory);
-  const embeddingEnabled = memory?.enabled === true && asJsonRecord(memory.embedding) !== null;
+  const embeddingEnabled = resolveProjectMemoryEmbeddingConfig({ projectConfig: projectConfig as ProjectConfig | null }) !== null;
   const gitnexusEnabled = projectConfig?.gitnexus === true;
 
   if (embeddingEnabled && gitnexusEnabled) {
@@ -2499,6 +2499,10 @@ function buildContextSearchGuidance(context: Record<string, unknown>, style: "de
     return style === "rg"
       ? "Before using `rg`, use `claw search --query` to narrow the document search scope, then use `rg` to locate exact files or symbols."
       : "When useful, use `claw search` to narrow the document search scope, then use the default search to locate exact files or symbols.";
+  }
+  if (memory?.enabled !== false) {
+    return "Use `claw search --query` to discover document locations, then native file/text search within them. Embedding is disabled; no vector index refresh is needed."
+      + (gitnexusEnabled ? " Use GitNexus for code search when useful." : "");
   }
   if (gitnexusEnabled) {
     return style === "rg"
@@ -3134,7 +3138,8 @@ function buildCindySessionStartContext(
     lines.push(`claw-kit repaired the project configuration${fixedPaths.length > 0 ? `: ${fixedPaths.join(", ")}` : "."}`);
   }
   if (versionSyncPrompt?.placement === "prefix") lines.push(...versionSyncPrompt.lines);
-  lines.push("Before using `rg`, use `claw search --query` to narrow the document search scope and GitNexus to narrow the code search scope, then use `rg` to locate exact files or symbols.");
+  const searchGuidance = buildContextSearchGuidance(context, "rg");
+  if (searchGuidance) lines.push(searchGuidance);
   if (versionSyncPrompt?.placement === "suffix") lines.push(...versionSyncPrompt.lines);
   return lines.length > 0 ? lines.join("\n") : null;
 }

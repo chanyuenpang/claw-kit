@@ -30,7 +30,7 @@ The DSH Settings surface needs project selection without granting browser client
 - `.claw/project-override.json` 里的显式 `null` 是真实 override 值，不表示回退到 team config。
 - DSH project configuration uses a narrow Host RPC: the browser supplies only a registered `workspaceId`, layer, approved key path, JSON value when setting, and layer revision; the Host resolves the workspace and delegates `config get|set|unset` to CLI/Core. The UI must not write DSH global settings or accept project paths.
 - 只有 runtime project resolution 消费 `.claw/project-override.json`；canonical protocol repair 和 `claw init` 继续只拥有 team-facing `.claw/project.json`。
-- default vector indexing 可以保持 runtime-enabled，但 protocol repair 不能仅因默认值就把 `memory.embedding.store.vector.enabled = true` 写回 `.claw/project.json`；`store.vector` 只在显式 `enabled: false` 或 `extensionPath` 有意义时保留。
+- vector runtime requires explicit `memory.embedding.enabled: true`; protocol repair does not enable it from provider/model defaults or write `memory.embedding.store.vector.enabled = true` merely to represent the default. `store.vector` remains meaningful only for explicit `enabled: false` or `extensionPath`.
 - 当 effective config 设置 `goalMode=false` 时，workflow guidance 不再返回 `goalMode`。
 - Knowledge finalization 不由 project-level `truthDispatch` 或 workflow guidance delegation 控制；current writer configuration 由 `knowledgeWriter` object 和 hook-owned finalization job 快照拥有。
 

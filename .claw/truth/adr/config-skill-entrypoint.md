@@ -20,7 +20,7 @@ The final `0.1.49` release line made this entrypoint part of the published adapt
 - Shared team changes go to `.claw/project.json`.
 - Personal local changes go to `.claw/project-override.json`.
 - Personal override examples use the current flat canonical fields, not legacy nested workflow/GitNexus shapes.
-- Default local vector indexing remains runtime-enabled, but default config examples and repair output do not write `store.vector.enabled = true`.
+- Default vector runtime is disabled unless `memory.embedding.enabled` is explicitly true; default config examples and repair output do not write `store.vector.enabled = true`.
 - `store.vector` remains in config only for explicit intent: `enabled: false` or `extensionPath`.
 - Keep configuration semantics in the canonical config package; [shared-source ADR](<shared-planning-skill-source.md>) owns source roots and artifact-only assembly, not this entry decision.
 

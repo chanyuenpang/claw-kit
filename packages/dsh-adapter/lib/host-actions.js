@@ -193,6 +193,10 @@ export function compactClawOutput(output, operation) {
             return entry;
         });
     }
+    if (output.mode !== undefined)
+        visible.mode = output.mode;
+    if (output.discovery !== undefined)
+        visible.discovery = output.discovery;
     if (output.unavailable !== undefined)
         visible.unavailable = output.unavailable;
     if (output.count !== undefined)

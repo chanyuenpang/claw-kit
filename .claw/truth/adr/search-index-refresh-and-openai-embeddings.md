@@ -80,7 +80,7 @@
 - 大量向量结果在 worker 侧改为写入临时文件，再通过轻量元数据经由 stdout 返回，避免巨大的 IPC payload。
 - 大型项目的默认 refresh 进度上限是每轮最多处理 100 个新增或变更文件，让 backlog 通过重复运行自然推进。
 - `packages/core/test/core.test.ts` 新增了中文排序回归用例，并把使用 `CLAW_EMBEDDING_MOCK` 的 project-search / memory-refresh 测试改成串行，避免并发共享环境变量污染。
-- `claw context` / protocol auto-repair must backfill that default local embedding config into older project schemas instead of leaving `memory.embedding` empty.
+- `claw context` / protocol auto-repair preserves or fills the default local embedding provider/model for older project schemas, while leaving vector runtime disabled unless `memory.embedding.enabled` is explicitly true.
 - `claw-kit` 自身项目不把仓库 `docs/` 目录加入 `memory.externalDocPaths`，这样 `claw search` 继续面向 `.claw` memory / truth / ADR 文档，而不是把实现文档目录默认并入 recall。
 - `memory.externalDocPaths` / `claw search` external memory paths 只纳入 `.md` 文件，保持 `claw search` 是文档 recall，而不是代码搜索。
 
@@ -96,9 +96,9 @@
 - 文档变更、删除和 embedding 配置漂移都会被显式收敛到 sqlite 状态同步里，减少 metadata 与向量内容不一致的问题；embedding reset 只会重置当前向量状态，不会把 refresh 退化成单次全库重建。
 - 历史旧数据如果只剩 `docs` row 但缺少 `doc_embeddings`，refresh 也会把它们纳入补写范围，避免向量索引因为旧记录漏扫而不完整。
 - `claw search` 的 recall 面继续保持项目级文档语义，不会因为外部路径或 `FTS` 回退而漂移成通用代码搜索。
-- 旧项目在第一次运行 `claw context`、`claw check` 或其他协议修复入口后，会被自动提升到可索引的默认 local embedding schema，不需要手工补 `memory.embedding`。
-- 新项目与缺少 `memory.embedding`、由 protocol auto-repair 补齐的旧项目都会采用 Jina `768` 维默认值；已经显式写入 `m-v2.0`、`xs` 或显式 `outputDimensionality` 的项目不会被偷偷改写掉它们的兼容语义。
-- 查询阶段与索引阶段共享同一套 vector contract；当 project recall 的预期前置条件不可用（缺项目、禁用、缺索引或 store busy）时，返回空结果及结构化原因与继续原生仓库搜索的建议，不创建项目或隐式刷新索引。无效请求、authority/integrity 错误仍失败；终态 workflow closeout 维护索引，维护失败不撤销已完成结果。
+- 旧项目在第一次运行 `claw context`、`claw check` 或其他协议修复入口后，会被补齐兼容的 local embedding provider/model schema；这不会启用向量运行路径，只有 `memory.embedding.enabled: true` 才启用。
+- 新项目与缺少 `memory.embedding`、由 protocol auto-repair 补齐的旧项目仍采用 Jina `768` 维模型配置；模型配置保留不代表授权启用 embedding，显式写入 `m-v2.0`、`xs` 或 `outputDimensionality` 的项目也保留其兼容语义。
+- 查询阶段与索引阶段共享同一套 vector contract；当 embedding 已启用但 recall 前置条件不可用（缺索引或 store busy）时，返回空结果及结构化原因与继续原生仓库搜索的建议，不创建项目或隐式刷新索引。`memory.embedding.enabled` 关闭时则按独立 opt-in 决策返回正常 discovery 位置；`memory.enabled: false` 与无效请求、authority/integrity 错误仍保持各自原有失败语义。终态 workflow closeout 仅在有效 embedding 配置启用时维护向量索引，维护失败不撤销已完成结果。
 - refresh failure 会直接暴露 embedding/provider/runtime 问题；调用方必须修复环境或改配置，然后重新执行显式 refresh，而不是依赖 text-only refresh 继续前进。
 - 中文多词检索不再被单次严格 `MATCH` 语义卡住，keyword planner 可以更稳定地为 hybrid fusion 提供候选集。
 - 多条 recall routes 先扩充候选池、再统一重排，减少单一路径偏置，让项目搜索更接近成熟文档 recall 系统的结果质量。

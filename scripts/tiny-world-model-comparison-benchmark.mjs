@@ -172,6 +172,7 @@ function prepareEvaluationRoot(root, snapshot, spec) {
       enabled: true,
       externalDocPaths: ["docs", ".agents/skills"],
       embedding: {
+        enabled: true,
         provider: "local",
         model: spec.model,
         outputDimensionality: spec.dimensions,

@@ -14,6 +14,12 @@ for (const search of [searchMemory, searchMemoryAsync]) {
     assert.deepEqual(fs.readdirSync(cwd), []);
     const project = ensureProjectEnvironment(cwd);
     const before = fs.readdirSync(project.clawDir).sort();
+    const discovery = await search({ cwd, query: "decision" });
+    assert.equal(discovery.mode, "discovery");
+    assert.equal(discovery.unavailable, undefined);
+    const enabledConfig = JSON.parse(fs.readFileSync(project.projectJsonPath, "utf8"));
+    enabledConfig.memory.embedding.enabled = true;
+    fs.writeFileSync(project.projectJsonPath, JSON.stringify(enabledConfig));
     const absentIndex = await search({ cwd, query: "decision" });
     assert.equal(absentIndex.unavailable?.code, "MEMORY_VECTOR_INDEX_REQUIRED");
     assert.deepEqual(absentIndex.results, []);

@@ -896,6 +896,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
       autoUpdate: true,
       externalDocPaths: ["docs/", "README.md"],
       embedding: {
+        enabled: false,
         provider: "local",
         model: "jinaai/jina-embeddings-v2-base-zh",
       },
@@ -1766,6 +1767,7 @@ test("writePlan rejects unsupported template configOverride keys", async () => {
 test("project embedding warmup loads the persistent local session without writing a query cache entry", async () => {
   const root = createEmptyFixture("embedding-warmup");
   initProject({ cwd: root, projectName: "Embedding Warmup" });
+  enableFixtureEmbedding(root);
   const storePath = path.join(root, ".claw", "memory.sqlite");
   const db = new DatabaseSync(storePath);
   db.exec("CREATE TABLE index_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
@@ -3921,6 +3923,7 @@ test("resolveContext deep-merges project-override.json and preserves explicit nu
           enabled: true,
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
           },
@@ -4583,6 +4586,7 @@ test("memory search indexes only project-scoped recall sources", async () => {
         memory: {
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
             local: {
@@ -4723,6 +4727,7 @@ test("project search keeps recall for multi-term Chinese queries across differen
         memory: {
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
             local: {
@@ -4891,6 +4896,7 @@ test("project search skips the embedding worker for a unique exact filename hit"
       memory: {
         externalDocPaths: ["docs/"],
         embedding: {
+          enabled: true,
           provider: "local",
           model: "Snowflake/snowflake-arctic-embed-xs",
           local: { modelCacheDir: path.join(root, ".model-cache") },
@@ -4945,6 +4951,7 @@ test("project search caches embeddings by the original semantic query text", { c
       memory: {
         externalDocPaths: ["docs/"],
         embedding: {
+          enabled: true,
           provider: "local",
           model: "Snowflake/snowflake-arctic-embed-xs",
           local: { modelCacheDir: path.join(root, ".model-cache") },
@@ -5009,6 +5016,7 @@ test("project query embedding cache resets when embedding config changes", { con
         memory: {
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model,
             local: { modelCacheDir: path.join(root, ".model-cache") },
@@ -5078,6 +5086,7 @@ test("project query embedding cache remains bounded to 128 rows", { concurrency:
       memory: {
         externalDocPaths: ["docs/"],
         embedding: {
+          enabled: true,
           provider: "local",
           model: "Snowflake/snowflake-arctic-embed-xs",
           local: { modelCacheDir: path.join(root, ".model-cache") },
@@ -5138,6 +5147,7 @@ test("project search prioritizes strong-term Chinese docs for conversational que
         memory: {
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
             local: {
@@ -5185,6 +5195,7 @@ test("project search demotes index-like docs when a focused Chinese doc matches 
         memory: {
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
             local: {
@@ -5231,6 +5242,7 @@ test("project search keeps recall for multi-term Chinese queries across differen
         memory: {
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
             local: {
@@ -5283,6 +5295,7 @@ test("project search reranks multi-term Chinese queries to cover distinct strong
         memory: {
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
             local: {
@@ -5337,6 +5350,7 @@ test("project search uses substring fallback for short Chinese multi-term querie
         memory: {
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
             local: {
@@ -5389,6 +5403,7 @@ test("project search can rescue filename-aligned Chinese plan docs through candi
         memory: {
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
             local: {
@@ -5443,6 +5458,7 @@ test("project search prioritizes exact Chinese document hits over weaker project
         memory: {
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
             local: {
@@ -5507,6 +5523,7 @@ test("project memory refresh generates local embedding metadata and vector rows 
         memory: {
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
             local: {
@@ -5584,6 +5601,13 @@ test("project memory refresh generates local embedding metadata and vector rows 
   }
 });
 
+function enableFixtureEmbedding(root: string): void {
+  const configPath = path.join(root, ".claw", "project.json");
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  config.memory.embedding.enabled = true;
+  fs.writeFileSync(configPath, JSON.stringify(config));
+}
+
 test("project memory refresh uses 768 dimensions for the default local embedding model", { concurrency: false }, () => {
   const root = createEmptyFixture("memory-default-local-embeddings");
   initProject({
@@ -5591,6 +5615,7 @@ test("project memory refresh uses 768 dimensions for the default local embedding
     projectName: "Memory Default Local Embeddings",
     externalDocPaths: ["docs/"],
   });
+  enableFixtureEmbedding(root);
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   fs.writeFileSync(path.join(root, "docs", "guide.md"), "default local embedding doc\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "stable.md"), "stable truth doc\n", "utf-8");
@@ -5624,6 +5649,7 @@ test("project memory refresh splits oversized markdown paragraphs into multiple 
     projectName: "Memory Oversized Paragraph Split",
     externalDocPaths: ["docs/"],
   });
+  enableFixtureEmbedding(root);
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   const oversizedParagraph = "甲".repeat(7000);
   fs.writeFileSync(
@@ -5672,6 +5698,7 @@ test("project memory keeps heading context on knowledge chunks and selects tempo
     projectName: "Memory Temporal Knowledge Chunks",
     externalDocPaths: [],
   });
+  enableFixtureEmbedding(root);
   const sourcePath = path.join(root, ".claw", "truth", "features", "temporalwidget.md");
   fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
   fs.writeFileSync(sourcePath, [
@@ -5765,6 +5792,7 @@ test("project memory refresh surfaces embedding worker timeouts", { concurrency:
     projectName: "Memory Embedding Timeout",
     externalDocPaths: ["docs/"],
   });
+  enableFixtureEmbedding(root);
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   fs.writeFileSync(path.join(root, "docs", "guide.md"), "timeout doc\n", "utf-8");
 
@@ -5818,7 +5846,7 @@ test("project search reports advisory unavailability when the memory store is bu
         contextPaths: [],
         memory: {
           externalDocPaths: [],
-          embedding: null,
+          embedding: { enabled: true, provider: "local", model: "Snowflake/snowflake-arctic-embed-xs" },
         },
         gitnexus: {
           enabled: false,
@@ -5830,7 +5858,14 @@ test("project search reports advisory unavailability when the memory store is bu
     "utf-8",
   );
   fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "busy store search target\n", "utf-8");
-  const index = buildMemoryIndex({ cwd: root });
+  const previousMock = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+  let index;
+  try { index = buildMemoryIndex({ cwd: root }); }
+  finally {
+    if (previousMock === undefined) delete process.env.CLAW_EMBEDDING_MOCK;
+    else process.env.CLAW_EMBEDDING_MOCK = previousMock;
+  }
   const lockDb = new DatabaseSync(index.storePath);
   const previousBusyTimeout = process.env.CLAW_MEMORY_SQLITE_BUSY_TIMEOUT_MS;
   process.env.CLAW_MEMORY_SQLITE_BUSY_TIMEOUT_MS = "1";
@@ -5876,6 +5911,7 @@ test("project memory refresh incrementally reuses unchanged docs and syncs chang
         memory: {
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
             local: {
@@ -5992,6 +6028,7 @@ test("project memory refresh backfills vectors for existing docs when embeddings
         memory: {
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
             local: {
@@ -6083,6 +6120,7 @@ test("project memory refresh defaults to processing changed files in 100-file ba
         memory: {
           externalDocPaths: ["docs/"],
           embedding: {
+            enabled: true,
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
             local: {
@@ -6152,6 +6190,7 @@ test("project memory refresh still batches files after embedding config changes"
           memory: {
             externalDocPaths: ["docs/"],
             embedding: {
+              enabled: true,
               provider: "local",
               model,
               local: {
@@ -6426,6 +6465,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(projectConfig.memory.autoUpdate, true);
   assert.deepEqual(projectConfig.memory.externalDocPaths, ["docs/"]);
   assert.deepEqual(projectConfig.memory.embedding, {
+    enabled: false,
     provider: "openai",
     model: "text-embedding-3-small",
     remote: {
@@ -6498,6 +6538,7 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
     datedSectionsToKeep: 6,
   });
   assert.deepEqual(projectConfig.memory.embedding, {
+    enabled: false,
     provider: "local",
     model: "Snowflake/snowflake-arctic-embed-m-v2.0",
   });

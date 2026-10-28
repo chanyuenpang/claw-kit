@@ -547,9 +547,11 @@ function normalizeKnowledgeWriterByHost(value: unknown): ProjectConfig["knowledg
 }
 
 function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig | null {
+  if (value === null) return null;
   const embedding = asObject(value);
   if (!embedding) {
     return {
+      enabled: false,
       provider: "local",
       model: DEFAULT_LOCAL_EMBEDDING_MODEL,
     };
@@ -561,12 +563,14 @@ function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig |
   const model = readNonEmptyString(embedding.model);
   if (!model) {
     return {
+      enabled: false,
       provider: "local",
       model: DEFAULT_LOCAL_EMBEDDING_MODEL,
     };
   }
 
   return {
+    enabled: embedding.enabled === true,
     provider,
     model,
     ...(remote
@@ -626,6 +630,7 @@ function requireNullableEmbeddingConfig(
   }
 
   const embedding = value as Record<string, unknown>;
+  requireOptionalBoolean(embedding, "enabled", issues, `${label}.enabled`);
   const provider = embedding.provider;
   if (provider !== "openai" && provider !== "local") {
     issues.push({ path: `${label}.provider`, message: 'Field must be "openai" or "local".' });

@@ -80,6 +80,7 @@ export function buildDefaultProjectConfig(input: InitProjectInput): ProjectConfi
       autoUpdate: true,
       externalDocPaths: [...(input.externalDocPaths ?? [])],
       embedding: {
+        enabled: false,
         provider: "local",
         model: DEFAULT_LOCAL_EMBEDDING_MODEL,
       },

@@ -78,11 +78,11 @@ claw init
 
 ## 4. （可选）关闭项目向量记忆
 
-如需关闭 recall / embedding（避免下载大型 embedding 模型），可在项目内：
+Embedding 默认关闭。若已有项目显式开启，可单独关闭它，保留 finalizer 和外部文档更新；`claw search` 会正常返回文档位置，供 agent 使用传统搜索：
 
 ```bash
-claw config get  --layer team --key memory.enabled   # 记录返回的 revision
-claw config set  --layer team --key memory.enabled --value false --revision <revision>
+claw config get  --layer team --key memory.embedding.enabled   # 记录返回的 revision
+claw config set  --layer team --key memory.embedding.enabled --value false --revision <revision>
 ```
 
 ## 5. 常见问题

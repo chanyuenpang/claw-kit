@@ -11,6 +11,18 @@ test("search projection preserves unavailable reason instead of claiming zero hi
   assert.equal(compactClawOutput({ results: [] }, "search").unavailable, undefined);
 });
 
+test("search projection preserves complete discovery locations without treating them as hits", () => {
+  const discovery = {
+    reason: "embedding_disabled",
+    locations: [{ path: "G:/project/.claw/truth", kind: "truth", type: "directory", exists: true },
+      { path: "G:/project/missing", kind: "external_doc", type: "missing", exists: false }],
+    nextStep: "Use native file/text search; no index refresh is needed.",
+  };
+  assert.deepEqual(compactClawOutput({ mode: "discovery", results: [], discovery }, "search"), {
+    ok: true, command: "search", mode: "discovery", results: [], discovery,
+  });
+});
+
 test("knowledge projection preserves owner claim material and additive receipt fields", () => {
   for (const command of ["knowledge.claim", "knowledge.claim.receipt", "knowledge.done", "knowledge.done.receipt"]) {
     const result = { ok: true, command, finalizeId: "id", jobPath: "job", reportPath: "report", writer: { model: "model" }, extraReceipt: { version: 2 } };

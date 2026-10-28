@@ -173,8 +173,7 @@ test("cli plan done records completedAt and retains the current task path", asyn
   const completedPlan = JSON.parse(fs.readFileSync(String(doneResult.planPath), "utf-8")) as JsonRecord;
   assert.match(String(completedPlan.completedAt), /^\d{4}-\d{2}-\d{2}T/);
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
-  const memory = refreshStatus.memory as JsonRecord;
-  assert.equal(memory.task, undefined);
+  assert.equal(refreshStatus.memory, undefined, "default-off embedding does not enqueue vector refresh");
   assert.equal(fs.existsSync(path.join(taskDirectory(root, "archive-task"), "memory.sqlite")), false);
   assert.equal(fs.existsSync(taskDirectory(root, "archive-task")), true);
   assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "archive-task")), false);
@@ -570,8 +569,7 @@ test("cli plan edit completion dispatches the same completion refresh as plan do
   assert.equal(achievement.retrospectiveSaved, true);
   assert.equal("policy" in (result.knowledgeDispatch as JsonRecord), false);
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
-  const memory = refreshStatus.memory as JsonRecord;
-  assert.equal(memory.task, undefined);
+  assert.equal(refreshStatus.memory, undefined, "default-off embedding does not enqueue vector refresh");
   const completedPlan = JSON.parse(fs.readFileSync(String(result.planPath), "utf-8")) as JsonRecord;
   assert.match(String(completedPlan.completedAt), /^\d{4}-\d{2}-\d{2}T/);
 });
@@ -586,8 +584,7 @@ test("cli plan edit end.closed dispatches completion finalization", async () => 
 
   assert.equal(result.planStatus, "end.closed");
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
-  const memory = refreshStatus.memory as JsonRecord;
-  assert.equal(memory.task, undefined);
+  assert.equal(refreshStatus.memory, undefined, "default-off embedding does not enqueue vector refresh");
 });
 
 test("cli plan edit end.leave dispatches end-state finalization", async () => {
@@ -605,8 +602,7 @@ test("cli plan edit end.leave dispatches end-state finalization", async () => {
   assert.equal(result.planStatus, "end.leave");
   assert.equal(result.stage, "left");
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
-  const memory = refreshStatus.memory as JsonRecord;
-  assert.equal(memory.task, undefined);
+  assert.equal(refreshStatus.memory, undefined, "default-off embedding does not enqueue vector refresh");
   const plan = JSON.parse(fs.readFileSync(taskFile(root, "leave-task", "plan.json"), "utf-8")) as JsonRecord;
   assert.equal(plan.completedAt, undefined);
   assert.equal(plan.leaveReason, "manual_leave");
@@ -882,10 +878,10 @@ test("cli direct queues completion refresh without main-agent deposition guidanc
 
 
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
-  const memory = refreshStatus.memory as JsonRecord;
   assert.equal(refreshStatus.ok, true);
-  assert.ok(Number((memory.project as JsonRecord).indexedCount) >= 1);
-  assert.equal((memory.task as JsonRecord | undefined), undefined);
+  assert.equal(refreshStatus.memory, undefined);
+  assert.equal((refreshStatus.operations as string[]).includes("memory.reindex.project"), false);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "memory.sqlite")), false);
 });
 
 test("overlapping direct closeouts coalesce into one completion refresh", async () => {

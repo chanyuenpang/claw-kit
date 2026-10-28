@@ -1,6 +1,8 @@
 import type { IntegrationHost } from "./integration-contract.js";
 
 export type MemoryEmbeddingConfig = {
+  /** Project embedding is opt-in; absence means disabled. */
+  enabled?: boolean;
   provider: "openai" | "local";
   model: string;
   remote?: {
@@ -724,6 +726,7 @@ export type MemoryIndexResult = {
   processedFileCount: number;
   pendingFileCount: number;
   sources: string[];
+  skipped?: "memory_disabled" | "embedding_disabled";
   embedding?: MemoryEmbeddingConfig | null;
   vectorIndex?: {
     enabled: boolean;
@@ -738,9 +741,20 @@ export type MemorySearchResult = {
   scope: MemoryScope;
   storePath: string;
   results: MemorySearchResultEntry[];
+  mode?: "discovery" | "search";
+  discovery?: {
+    reason: "embedding_disabled";
+    locations: Array<{
+      path: string;
+      kind: "truth" | "external_doc";
+      type: "directory" | "file" | "missing" | "other";
+      exists: boolean;
+    }>;
+    nextStep: string;
+  };
   unavailable?: { code: string; reason: string; nextStep: string };
   telemetry: {
-    route: "lexical_fast_path" | "hybrid" | "unavailable";
+    route: "lexical_fast_path" | "hybrid" | "unavailable" | "discovery";
     queryEmbedding: "skipped" | "cache_hit" | "generated";
     embeddingRuntime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
     vectorScanMs?: number;

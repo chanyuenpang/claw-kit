@@ -100,8 +100,9 @@ export type ProjectEmbeddingWarmupResult = {
 
 export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
   const project = resolveProjectContext(input.cwd);
-  if (!isProjectMemoryEnabled(project)) {
+  if (!resolveProjectMemoryEmbeddingConfig(project)) {
     return {
+      skipped: isProjectMemoryEnabled(project) ? "embedding_disabled" : "memory_disabled",
       scope: "project",
       storePath: getMemoryStorePath(project),
       indexedCount: 0,
@@ -349,6 +350,9 @@ function searchAvailableMemory(input: MemorySearchInput, startedAt: number): Mem
       projectRoot: project.projectRoot,
     });
   }
+  if (!resolveProjectMemoryEmbeddingConfig(project)) {
+    return discoverProjectMemory(project, startedAt);
+  }
   const storePath = getMemoryStorePath(project);
   if (!fs.existsSync(storePath)) {
     throw new ClawError(
@@ -364,6 +368,7 @@ function searchAvailableMemory(input: MemorySearchInput, startedAt: number): Mem
     return {
       scope: "project",
       storePath,
+      mode: "search",
       results: searchResult.results,
       telemetry: {
         ...searchResult.telemetry,
@@ -539,16 +544,56 @@ function buildMemoryStoreBusyError(storePath: string, operation: string, cause: 
   );
 }
 
+function projectMemoryLocations(project: ProjectContext): Array<{ path: string; kind: "truth" | "external_doc" }> {
+  const candidates = [
+    { path: path.resolve(project.truthDir), kind: "truth" as const },
+    ...(project.projectConfig?.memory?.externalDocPaths ?? []).map((entry) => ({
+      path: path.resolve(project.projectRoot, entry), kind: "external_doc" as const,
+    })),
+  ];
+  const seen = new Set<string>();
+  return candidates.filter((entry) => {
+    const key = process.platform === "win32" ? entry.path.toLowerCase() : entry.path;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function discoverProjectMemory(project: ProjectContext, startedAt: number): MemorySearchResult {
+  const locations = projectMemoryLocations(project).map((entry) => {
+    try {
+      const stat = fs.statSync(entry.path);
+      const type = stat.isDirectory() ? "directory" : stat.isFile() ? "file" : "other";
+      return { ...entry, exists: true, type: type as "directory" | "file" | "other" };
+    } catch (error) {
+      if (!["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+      return { ...entry, exists: false, type: "missing" as const };
+    }
+  });
+  return {
+    scope: "project", storePath: getMemoryStorePath(project), mode: "discovery", results: [],
+    discovery: {
+      reason: "embedding_disabled", locations,
+      nextStep: locations.some((entry) => entry.exists)
+        ? "Use native file/text search within the existing locations (Truth includes ADR). Skip missing locations. No vector index refresh is needed."
+        : "No document locations currently exist. Use native repository search as needed. No vector index refresh is needed.",
+    },
+    telemetry: { route: "discovery", queryEmbedding: "skipped", durationMs: Number((performance.now() - startedAt).toFixed(2)) },
+  };
+}
+
 function collectProjectMemorySources(project: ProjectContext): MemorySourceEntry[] {
   const sources: MemorySourceEntry[] = [];
-  for (const truthPath of listFiles(
-    project.truthDir,
-    (entry) => entry.toLowerCase().endsWith(".md") && path.basename(entry).toLowerCase() !== "summary.md",
-  )) {
-    addTextSourceIfExists(sources, truthPath, "truth_doc");
-  }
-  for (const externalPath of project.projectConfig?.memory?.externalDocPaths ?? []) {
-    addExternalDocSources(sources, project.projectRoot, externalPath);
+  for (const location of projectMemoryLocations(project)) {
+    if (location.kind === "truth") {
+      for (const truthPath of listFiles(location.path,
+        (entry) => entry.toLowerCase().endsWith(".md") && path.basename(entry).toLowerCase() !== "summary.md")) {
+        addTextSourceIfExists(sources, truthPath, "truth_doc");
+      }
+    } else {
+      addExternalDocSources(sources, project.projectRoot, location.path);
+    }
   }
   return sources;
 }
@@ -666,12 +711,12 @@ function prepareSchema(db: DatabaseSync): void {
   }
 }
 
-function resolveProjectMemoryEmbeddingConfig(project: ProjectContext): MemoryEmbeddingConfig | null {
+export function resolveProjectMemoryEmbeddingConfig(project: Pick<ProjectContext, "projectConfig">): MemoryEmbeddingConfig | null {
   if (!isProjectMemoryEnabled(project)) {
     return null;
   }
   const configured = project.projectConfig?.memory?.embedding;
-  if (!configured) {
+  if (configured?.enabled !== true) {
     return null;
   }
   return {
@@ -683,7 +728,7 @@ function resolveProjectMemoryEmbeddingConfig(project: ProjectContext): MemoryEmb
   };
 }
 
-function isProjectMemoryEnabled(project: ProjectContext): boolean {
+function isProjectMemoryEnabled(project: Pick<ProjectContext, "projectConfig">): boolean {
   return project.projectConfig?.memory?.enabled !== false;
 }
 

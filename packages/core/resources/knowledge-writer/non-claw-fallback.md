@@ -10,7 +10,7 @@ Qualify important current-state claims against relevant implementation and later
 
 ## Knowledge outcomes
 
-Find and maintain the existing owner of each relevant fact or decision. Create a new owner only for a genuinely new topic. Keep Truth and ADR consistent as one knowledge system; revisit earlier edits when evidence warrants it. Use search and direct reading where they resolve actual uncertainty, not repeated exhaustive scans by default.
+Find and maintain the existing owner of each relevant fact or decision. Create a new owner only for a genuinely new topic. Keep Truth and ADR consistent as one knowledge system; revisit earlier edits when evidence warrants it. Use search and direct reading where they resolve actual uncertainty, not repeated exhaustive scans by default. When search returns discovery locations, use native file/text search there; empty hits in discovery mode do not mean no documents exist.
 
 Use [knowledge-format.md](<knowledge-format.md>) for changed canonical content and meaningful dated evolution. Repair format problems that affect the change or machine readability; do not migrate untouched documents or unrelated passages. Preserve exact identifiers, local conventions and valid Markdown encoding.
 

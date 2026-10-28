@@ -83,6 +83,7 @@ function writeProjectConfig(model, outputDimensionality) {
       enabled: true,
       externalDocPaths: [],
       embedding: {
+        enabled: true,
         provider: "local",
         model,
         ...(outputDimensionality ? { outputDimensionality } : {}),
