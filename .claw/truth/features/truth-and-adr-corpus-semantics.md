@@ -18,7 +18,7 @@
 
 - 内置 writer 负责 evidence qualification、current/history、owner 选择、必要演化与语义压缩，以及 Truth/ADR one-owner consistency。调查、编辑、复查可按需要往返，不要求 Truth→ADR 固定步骤。外部 skill 可选择方法，但同样遵守 canonical 最小格式、证据和保留无关编辑的边界。
 - Runtime 为 recall 解析统一 metadata，不为任何 writer 执行 snapshot/trim 或固定治理 phase 门禁。编码归一化与 recall refresh 是 canonical completion 之后独立报告的 ancillary maintenance；不得将其失败重述为 canonical commit 失败。
-- Finalizer runtime 保留 claimant identity、claim token、terminal CAS、报告捕获与 no-replay 安全，不检查任意 session workflow 的 `end.completed`、非空 task 或全部 done。可选 external-doc updater 的失败独立报告，不否定成功的 Truth/ADR 维护。外部合同由 `external-writer-skill-config.md`、lifecycle 由 `../adr/hook-owned-two-phase-knowledge-finalization.md`、bounded evolution 由 `../adr/bounded-truth-and-adr-evolution-governance.md` 拥有。
+- The DSH/Codex/Cindy source-plan finalizer route uses source coordinates, `knowledge.materials`, and ordinary non-capturing plans/subplans; it has no claim-token/CAS/receipt completion prerequisite. Those controls remain relevant to compatibility jobs and routes that still use the old lifecycle, not as a universal finalizer contract. Source-plan ownership is defined by `../adr/source-plan-knowledge-handoff.md`; bounded evolution remains owned by `../adr/bounded-truth-and-adr-evolution-governance.md`.
 
 <!-- state: history -->
 ## 演化历史

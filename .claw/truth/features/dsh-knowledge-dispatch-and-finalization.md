@@ -3,227 +3,61 @@
 <!-- state: current -->
 ## Current behavior
 
-`dsh`（DeepSeek Harness）是 claw-kit 的一等 invocation host 与 knowledge finalization launcher。
+DSH is a first-class claw invocation host. For newly completed project plans with capture enabled, Core emits a versioned source-plan handoff containing the originating session key, complete plan path/title, project root, and writer preferences. DSH adapter dispatches that handoff to its native worker route. This source route does not create a claimable knowledge job and does not require claim, token, authenticated receipt, or a separate knowledge.done transition; ordinary non-capturing plan/subplan completion is the writer's completion boundary.
 
-- `SUPPORTED_CLAW_HOSTS = ["codex", "opencode", "cindy", "dsh"]`（`packages/cli/src/invocation-host.ts`）。
-- `isHostActionsHost`（`codex | dsh`）：这两个 host 的 CLI 输出携带版本化 `hostActions`
-  （`update_plan` / `create_goal` / `update_goal`），由各自 adapter 自动消费。
-- DSH 自动知识执行路线由 adapter 固定拥有，不再通过 `knowledgeWriter.executionPolicy` 选择；writer 的内容、model 和 reasoningEffort 配置仍保留。
-- DSH 没有独立 background runner；root completion 生成 ready job 与 `knowledgeDispatch`，实际 Team/native admission 由 adapter 能力合同拥有，不是主模型的失败后 fallback。
-- `KnowledgeFinalizationHost` 增加 `"dsh"`（`packages/core/src/knowledge-sidecar.ts`）。
-- DSH 的 `claw_run` 工具把 `claw search` 召回结果完整暴露给模型：
-  `compactClawOutput` 白名单包含 `query` / `results` / `count`，每条命中只保留
-  `sourcePath` / `kind` / `snippet` / `score`（内部字段如 storePath 仍隐藏）。
-  0.2.21.18 之前白名单不含 search 结果字段，模型只能看到 `{ok,command}`，知识召回
-  闭环断裂；该版本补上 search 字段后，`claw_run search` 的知识召回列表
-  （truth_doc/adr 命中）全可见。
+The writer calls the native `claw_run` `knowledge.materials` operation with the source session key and source plan path. Core reads the complete source plan and creates disposable ordinary writer templates; DSH reads originating-session history through its host API and writes available ordinary user/assistant text to the material report. Extraction excludes non-text/tool/reasoning records, applies source-plan time bounds and nearest preceding user context, and deduplicates message IDs. Unavailable history is reported as unavailable, not represented as an empty transcript. Source plan is read-only evidence. The writer follows ordinary workflow guidance, including an auxiliary plan with knowledge capture disabled and its governance subplan.
 
-DSH 知识终结 dispatch 流程：项目作用域 root plan 进入完成型终态
-`end.completed | end.closed` 且默认 capture 开启时，终态 mutation 先持久化 ready job
-（`job.host = "dsh"`、`reportCapture.mode = "claim"`、`status = "queued"`），再返回
-`knowledgeDispatch`（`buildKnowledgeDispatch` → `buildDshKnowledgeDispatch`，内部
-`resources/dsh-delegate-writer/TEMPLATE.json`）。DSH adapter 先完成父端可信 capture，再按当前 scoped capability 选择执行路由并交付
-immutable dispatch prompt；writer 创建独立 delegate
-plan、跟随 workflowGuidance、`knowledge claim` 认领 job、顺序执行生成的 assignment
-subplan、由 Core 核对真实 claim actor 并解析凭据后调用一次 `knowledge done`，不由模型抄写 token。显式 manual `end.leave` 是取消边界；父计划下潜暂离等待 resume 不是取消。
-`knowledgeCapture:false` 辅助 delegate 不递归创建知识 job（新计划统一项目流程；session 身份仍负责绑定，旧 session 存储仅保留恢复兼容），通用终态 gate 由
-[finalization lifecycle ADR](<../adr/hook-owned-two-phase-knowledge-finalization.md>) 拥有。
+Implementation anchors: `packages/cli/src/command-service.ts`, `packages/cli/src/knowledge-dispatch.ts`, `packages/cli/src/knowledge-materials.ts`, `packages/dsh-adapter/src/index.ts`, `packages/dsh-adapter/src/capture.ts`, and `packages/dsh-adapter/src/protocol.ts`. The built-in governance minimum format is `packages/core/resources/knowledge-writer/knowledge-format.md`.
 
-Core source 在 DSH 创建计划时登记可信 capture 起点；同一 root 的父子切换与返回保留该窗口。原生 subagent host 的子计划以完成型终态结束时，即使恢复父焦点，也会为该子计划登记自己的 ready finalization job；父计划的 capture owner 与起点继续保留，父计划之后结束时仍可产生独立 job。DSH adapter 仍按 host-owned dispatch contract 派发各 job，避免把子计划终态误当作只恢复焦点而漏掉沉淀。CLI service 在成功返回父焦点回执前同步 project binding，context 与 v2 focus 必须一致。manual leave 只清理匹配计划的捕获，不能清空另一个 active plan；不同 root 的新捕获窗口不得继承旧起点。显式 `knowledgeCapture:false` 仍是无 job 的 capture opt-out。上述源码合同和定向回归不证明旧安装 Beta 已通过真实冒烟.
+The older claim-based job lifecycle remains available for explicitly invoked legacy jobs and other routes that still use it; it is not the new DSH source-plan handoff. Old jobs are not automatically replayed, migrated, or rewritten. DSH native adapter changes require matching CLI/Core protocol; source checks do not prove an installed host has loaded them.
 
-新 background finalizer 固定使用 DSH native subagent 家族，即使当前 Agent 暴露 Team 工具；可复用 continuable 时复用相同 applied recipe，仅有 one-shot 时仍允许正常执行。低成本 model/effort 是尽力偏好：adapter 通过真实 llm/subagents 能力在 admission 前解析 applied explicit/inherit/default recipe，记录 requested/applied/resolved-or-unknown；目录、options 或精确 effort 不可用不阻塞。发送后 outcome unknown、已 admitted executor、claim/capture/权限失败仍沿用硬边界，绝不换模型/route 重发。旧 Team/native execution 保留原 pin，不迁移。
+## Operational boundaries
 
-当前 source 的 capability-selected role 复用、逐 job 完整身份、未知投递不重发及 joint-terminal 队列推进，由 [delegation Truth](<dsh-subagent-delegation-contract.md>) 唯一拥有。已有 one-shot job 保持旧执行证据与 native 兼容路径；新路由需要匹配的 CLI/Core 协议，不能把旧短标题合同用于同一 reused session。主模型只消费 adapter 回执，不自行启动或重试 writer。source 与受控服务测试不证明当前运行 profile 已安装或激活该路径。
+- Adapter owns host identity and originating history access; the worker session is distinct from the source session key used only as a read target.
+- A source path must resolve within the project's task directory. Missing/unreadable materials remain visible as errors or unavailable evidence; do not fabricate completeness.
+- Dispatch is not proof that document changes occurred. Report changed documents, supported no-edit conclusions, or unfinished work from the ordinary plan outcome.
+- Legacy claim/receipt APIs and their safety contracts remain compatibility behavior, not prerequisites for the new source route.
 
-## Native catalog compatibility
+## Related code and verification
 
-DSH `subagents.listChildren(parentId)` returns durable `{id, createdAt, mode, label}` catalog entries, not the UI `kind: "child"` / `activity` projection. Finalizer reuse accepts this catalog and legacy tagged children. The old mandatory `kind` filter silently missed existing continuable roles and created a new child for every job; the fishing-design session showed four distinct continuable IDs with the same role label. Tests now use the actual untagged catalog shape.
+- `packages/cli/src/command-service.ts` (source handoff: 1000-1025)
+- `packages/cli/src/knowledge-dispatch.ts` (lines 8-30)
+- `packages/cli/src/knowledge-materials.ts` (lines 13-81)
+- `packages/dsh-adapter/src/index.ts` (lines 489-501)
+- `packages/dsh-adapter/src/capture.ts`
+- `packages/dsh-adapter/src/protocol.ts` (lines 242-244)
 
-New jobs reuse the first compatible role in Host catalog order after canonical joint-terminal reconciliation; this also recovers parents already containing duplicate labels without creating or deleting members. Existing reservations retain their exact member ID; a missing pinned child never authorizes another creation. Legacy per-job finalizer discovery treats matching durable identity with absent activity as already dispatched, not proof of settlement or permission to resend. Accepted/unknown deliveries keep their existing no-replay boundary. Runtime activation still requires installing and loading the fixed package.
-
-The 2026-10-11 DSH-only promotion delivered adapter 0.2.50.1 (`@veewo/dsh-claw-kit` npm 0.2.50-rc.1) from source `0dd59e6a7974ccd75f55a29b097d94ac37644539`. The frozen candidate was `2026-10-11T14-15-32-207Z-4e05fa0e`; the owner explicitly waived its seven-day trial. After an accepted upload returned asynchronous processing, reconciliation verified the exact downloaded archive SHA-256 `ac6270d3d81b6f4bb529443415d7cce652d7f22c33f998b681b033c61ff17b3a` and latest version. Source and release verification reported `main`, `origin/main`, and `vdsh-0.2.50.1` aligned with a clean worktree. The public package was installed through the desktop plugin manager, but activation was not claimed: a restart remains required, and no restart was performed.
-
-## Completion evidence and recovery
-
-- Source knowledge.done accepts native finalize_id/status/result-or-error; optional legacy token is checked, never overwritten. Wrong credential/actor/project is prepare/known/none before job/TTL/report/template/Truth writes.
-- Terminal commits once before report/encoding/cleanup/delegate effects. Errors remain separately visible. Authenticated receipts expose no token and do not mutate canonical state; terminal proof keeps post-commit effects explicitly unverified.
-- Unknown delivery only queries a receipt, never a second done/failed completion. Cold queries/reconnects use registry-only session.open.receipt, without focus, expiry, refresh or retention recovery. Missing/running/expired does not authorize replay.
-- The 491b4e95 incident was a wrong copied credential plus missing owner phase. Source/tests do not update an old loaded runtime or authorize replay of its now-expired job. Packaging/install/activation remain separate boundaries.
-
-<!-- state: history -->
-## Historical verification
-
-<!-- dated: 2026-10-22 -->
-### Windows DSH 0.2.63 frozen-candidate core smoke
-
-A Windows DSH session recorded completion of the frozen CLI 0.2.63 / adapter 0.2.63-rc.0 core smoke. The plan retrospective reports successful real acknowledgements for leave/unbind, plan-field editing/removal, task add/edit/remove, wait/resume, direct status editing, context recovery, one-level subplan completion that automatically completed parent task #2 and returned focus to parent task #3, and root-plan closeout. The test scope excluded publishing, building, and configuration changes. The accompanying report is a concise conversation record rather than a raw receipt log; treat this as evidence for that candidate and session only, not a general guarantee for other installations or later artifacts.
-
-<!-- dated: 2026-10-10 -->
-### Windows DSH 0.2.50 workflow smoke scope
-
-A Windows DSH session using public CLI 0.2.50 and adapter 0.2.50-rc.0 recorded successful core workflow checks: parent plan/task operations, context and focus recovery, wait/resume, direct state edits, and a one-level subplan that completed parent task #2 and restored focus at task #3. The plan retrospective reports no observed core-operation failures and all parent tasks complete. The accompanying plan report was empty, and its own retrospective explicitly left post-`plan.done` background finalization unobserved; this is evidence only for the exercised session and operations, not proof of finalizer completion, other profiles, or later artifacts.
-
-<!-- dated: 2026-10-03 -->
-### Cross-host execute-first Beta verification boundary
-
-The final cross-host source batch `2026-10-03T08-37-10-134Z-cb88ae90` supersedes the earlier v1 batch after live DSH architect acceptance exposed two narrow false positives. The v2 changes fixed provider-catalog exception handling for callable carriers and localized invalid/null Codex effect candidates as host-effect failures. Focused verification recorded DSH 37/37, Codex driver 26 pass plus 5 retired skips, and repository checks passing. After restarting onto the frozen v2 installation, real DSH semantic architect reuse and root/subplan return passed. This is evidence for that frozen batch and those exercised paths, not for later bytes or a Codex live Host: this session did not have a live Codex Host, and the seven-day local trial remains incomplete. No remote push or publication occurred. A restart is still required to load subsequently installed changes; the installed v2 path's real DSH test was performed after its restart.
-
-<!-- dated: 2026-10-02 -->
-### Native-only dispatch 的兼容基线
-
-以下完整旧路由说明仅保留为 one-shot 兼容、信号故障和重复投递排查的历史证据，不是新任务统一路由。
-
-终态 mutation 返回 `knowledgeDispatch` 时，DSH adapter 自动派发 writer child
-（`subagents.start("spawn", ...)`，label 由 `finalizerChildLabel` 生成：
-`knowledge-finalizer-<完整 finalizeId>`；CLI delegate plan 标题仍仅使用前 12 位），并在 compact
-result 中返回执行回执；主模型不自行执行 writer，只消费该回执
-（`dispatch.ok`）（与 delegate 只执行 claim → assignment subplan → 单次
-`knowledge done` 的边界一致）。派发是 fire-and-forget：adapter 只取执行回执
-（`dispatch.ok`），不 await 子代理结果；子代理使用专用 `AbortController`，不复用
-claw_run 工具信号 `exec.signal`（工具调用返回时该信号会 abort，曾导致子代理在首
-个 turn 前被取消、`plan.done` 后 finalizer 从未运行——2026-08-22 修复，提交
-`0a15891`，锚点 `packages/dsh-adapter/src/index.ts`）。compact result 把
-`dispatch` 前置到 `command` 之后，且仅在实际存在 dispatch 时重插该字段：向对象
-写入 `undefined` 会破坏 DSH lossless-JSON 工具输出校验（0.2.26.0 加载后普通
-`plan.create` 曾报 "value is not lossless JSON"——2026-08-22 修复，提交
-`cebd5b9`）。
-
-adapter 以 `finalizeId` 为键保证「同一 finalizeId 至多一个未结算 writer child」：
-派发前先经 `resolveFinalizerReuse` 查重，命中则跳过 `start` 并返回
-`dispatch: { ok: true, reused: true, runId, policy }`，未命中才 `start` 并返回
-`dispatch: { ok: true, runId, policy }`。查重有两条来源，由便宜到贵：
-
-- 进程内 `finalizerDispatches`（`Map<string, { runId, settled }>`）：本进程启动且尚未
-  观测到结算的 child 直接短路，覆盖重复派发。记录在 `start` 返回后即保存；`run.result`
-  存在并 settle（成功或失败皆可）后标记 `settled`，但只有规范 job 仍 queued 且目录
-  证明没有 running child 才可重新派发。缺失 result 不等于已结算，不能据此解除去重。
-- 服务层 durable 目录：`subagents.listChildren(agent.id)` 中 `kind === "child"`、
-  `activity === "running"` 且 `label` 匹配完整 finalizeId label 的条目，覆盖 adapter
-  重启；兼容识别旧的前 12 位 label。one-shot child 的 descriptor 同样可耐久发现。
-  缺失 `listChildren`、非数组结果、diagnostic 条目或查询抛错都不能证明未投递，返回
-  deferred，不再新建 child；这不是一次成功复用，也不是 fail-open admission。
-
-capture、目录或 native admission 失败返回 `dispatch.ok: false` 与安全的 phase/code/guidance；
-服务缺失另带 `retryable: false`。`FINALIZER_MANUAL_RETRY_GUIDANCE` 明说模型不得自行
-运行 finalizer 或手动重试。queued job 由后续系统入口只读对账后恢复；未知 start 回执不能
-盲重派，已 claim job 不切换 writer。child 退出但尚无规范终态时仅记录安全告警，不能
-代替 `knowledge.done`。这些规则不承诺外部文档写入 exactly-once。
-
-此处记录引入 capability-selected role 之前的 native-only 行为，仅用于兼容和事故推理；不能据此否认当前 source 的 Team/native-continuable 复用。实现锚点：`packages/dsh-adapter/src/index.ts`
-中的 `finalizerChildLabel`、`resolveFinalizerReuse`、`dispatchOne`、`sweepPending`。
-
-<!-- dated: 2026-08-22 -->
-### 旧 native 与 claim-time capture 路线的验证记录
-
-以下记录属于各自版本与当时的采集路线，不证明当前安装版 Team 能力、HMR、模型覆盖或跨 job 复用已经验证。
-
-端到端已验证（finalizeId `8a208046f490…`，task `Knowledge-dispatch-test`，goal
-`verify knowledgeDispatch`）：`plan done` → ready job 持久化 → delegate plan
-（`delegate-writer/TEMPLATE.json`）→ `claw knowledge claim --project-root . --finalize-id <id>`
-→ built-in knowledge-governance assignment subplan（Truth 先于 ADR）→
-`claw knowledge done --job <jobPath> --claim-token <claimToken> --status succeeded`。
-
-第二次端到端验证（finalizeId `ba361e9bfb37…`，task `Auto-dispatch-E2E`，goal
-`verify auto-dispatch end to end`）复验同一生命周期：`plan done` 自动派发 ready job
-与 `knowledgeDispatch`，delegate subagent 完成 delegate plan → claim → assignment
-subplan → 单次 `knowledge done`，确认自动派发路径与首次验证一致可用。
-
-第三次端到端验证（finalizeId `9ee301c46ed5…`，task `Window-capture-check`，goal
-`verify plan-window capture extraction`）验证 claim-time capture 的窗口过滤语义：
-DSH capture 提取只采用当前 plan 窗口内的 `task.done` 结论，以 job 的
-`reportCapture.startedAt`（registry `activeStartedAt`）为权威窗口起点，过滤出
-`time >= startedAt` 的结论后写入相邻 report（空 capture 合法）；新 plan → 执行 →
-`plan.done` 后的 capture 与 report 均按该窗口过滤，确认窗口提取端到端可用。
-
-第四次端到端验证（finalizeId `00909bd12373…`，plan `DSH-full-loop-verification`，
-goal `verify the complete dsh knowledge loop after 0.2.21.18: plan lifecycle,
-automatic writer dispatch, report capture window, search recall`）在 0.2.21.18
-真实 Host 上复验完整闭环：plan create/start/done 生命周期（goalSync 自动消费
-`create_goal` + projection 进度）、`plan.done` 自动派发（daemon channel +
-native subagent）、claim-time capture 窗口过滤、以及 `claw_run search` 召回
-可见性全部通过，与 `docs/dsh-plugin-integration-research.md` §5.5 验收一致。
-
-第五次验证（finalizeId `f7506ae1a528…`，plan `verify-finalizer`，goal
-`verify knowledge finalizer auto-dispatch after signal fix`）在信号修复（专用
-`AbortController` + fire-and-forget，`0a15891`；lossless-JSON 重插守卫，`cebd5b9`）
-后确认 `plan.done` 真正启动运行中的 finalizer subagent：auto-dispatch 的 knowledge
-job 被 claim 并走完 claim → assignment subplan → 单次 `knowledge done`，证明
-`exec.signal` abort 修复后自动派发端到端可用。
-
-<!-- state: current -->
-## Current capture and operational constraints
-
-DSH 父会话在终态冻结 job 的采集窗口 `[startedAt, endedAt)`，queued 恢复沿用原窗口；adapter 从自身 session history 提取窗口内普通 user/assistant 文本（包括 `assistant/message` 和兼容的 `assistant/final`），不要求 completed turn 或 final channel。结构过滤只接受普通 text blocks，排除 tool/reasoning 等其他 event；最近的窗口前 user 输入可作为 `plan_request` 上下文，消息按 ID 去重。缺少有效起点或采集历史不可读仍是 capture 错误，不伪装为空采集。adapter 通过私有 stdin 将事件交给 CLI，CLI 保留既有 task conclusions 并在规范 job 锁内原子发布 report 与采集回执；writer claim 仅在真实回执存在时签发 token，不读取 `.claw/runtime/report-collectors/dsh.json` 或启动旧 web 采集脚本。各平台普通对话采集与过滤边界由 [finalizer conversation capture Truth](finalizer-conversation-capture.md) 统一记录。`sessionQuery`/历史读取的一次瞬态失败在同 operation 内立即重读一次；两次仍不可读、起点缺失或发布失败使未领取 job 保持 queued（报告提交本身绝不自动重放）；Core job 锁内保存有界阶段、错误码、关联 ID 和次数（不保存报告正文或原始异常），父会话本次派发回执和后续 `claw_run context`/session-start 可查看安全诊断，成功采集与成功终结会消解旧告警。Core 为同一 child 保存不可变 claim receipt，结果未知时只读恢复，不重做 assignment；已领取但 child 遗失或外部写入确认丢失仍不可盲重派。锚点：`packages/dsh-adapter/src/capture.ts`、`src/index.ts`、`packages/cli/src/dsh-host-report.ts`、`src/dsh-finalizer-diagnostics.ts`、`src/knowledge-pending.ts`、`packages/core/src/knowledge-sidecar.ts`。
-
-## 已知陷阱
-
-- 原项目级 `dsh.json` executable collector 和本地 journal 不再是 DSH writer claim 的依赖。父端成功读取历史但没有 eligible ordinary text message 时可发布空 capture；历史读取或 CLI 发布失败则不启动 writer、不签 token，job 保持 queued，恢复入口继续根据规范 job 与原生 child catalog 对账.
-- `claw_run` 的 workspace 与 session 由 adapter 锻造。`resolveWorkdir` 优先采用
-  durable session header cwd，再兼容旧 session cwd/meta，最后按 exact session 的 workspace
-  registry 解析；不能从宿主启动目录推导项目根。旧 child cwd 落到 `C:\Windows\System32`
-  曾导致项目发现失败，当前应诊断真实绑定，不让模型用 shell/CLI 绕过 `claw_run`。
-- 自动派发的 finalizer subagent 必须使用专用 `AbortController`，不能复用 claw_run
-  工具信号 `exec.signal`：工具调用返回时信号 abort，子代理会在首个 turn 前被取消
-  （2026-08-22 修复，提交 `0a15891`）。
-- compact result 只在 dispatch 实际存在时前置重插 `dispatch` 字段；写入 `undefined`
-  会触发 DSH lossless-JSON 校验失败（"value is not lossless JSON"，2026-08-22
-  修复，提交 `cebd5b9`）。
-- finalizer 判重不能走模型侧 `list_agents`：exact scope 可能提供 Team 清单或普通
-  continuable 投影，均不能证明 native one-shot child 不存在。历史普通 control 投影曾
-  显式丢弃 one-shot child，错误枚举会产生第二个 writer；native one-shot 兼容判重必须在 adapter 内经
-  服务层 `listChildren` 完成；Team role 使用其真实 membership/roster 服务。不能从同名模型工具推断可用 schema。
-
-## 关联代码
-
-- `packages/dsh-adapter/`（`@veewo/dsh-claw-kit`，静态 Cordis bundle 插件）
-- `packages/dsh-adapter/src/index.ts`（`finalizerChildLabel` / `resolveFinalizerReuse` /
-  `finalizerDispatches` / `FINALIZER_MANUAL_RETRY_GUIDANCE`）
-- `packages/dsh-adapter/test/finalizer-execute.test.mjs`（execute 级：同一 finalizeId
-  只 `start` 一次）
-- `packages/dsh-adapter/test/finalizer-dispatch.test.mjs`（判重纯缝）
-- `packages/cli/src/invocation-host.ts`（`isHostActionsHost` / `isSubagentPolicyHost`）
-- `packages/cli/src/cli.ts`（DSH dispatch 与受信内部操作接入）
-- `packages/dsh-adapter/src/capture.ts`、`packages/cli/src/dsh-host-report.ts`（父端规范化与报告发布）
-- `packages/cli/src/knowledge-command.ts`（DSH claim receipt 与 token）
-- `packages/core/src/knowledge-sidecar.ts`（Host、capture、claim、done 的规范 owner）
-- `packages/core/resources/dsh-delegate-writer/TEMPLATE.json`
-- `docs/dsh-plugin-integration-research.md`（调研与正式化记录）
-
-## 验证标准
-
-- `--host dsh` 被 CLI 接受；`plan.done` 在 subagent policy 下持久化 ready job 并返回
-  `knowledgeDispatch`（policy `subagent`、prompt 指向 delegate-writer 模板）。
-- dispatch 的 subagent 能完成 delegate plan → claim → assignment subplan → done 全链路。
-- 终态 mutation 返回 `knowledgeDispatch` 时，`claw_run` compact result 含
-  `dispatch: { ok: true, runId, policy }` 确认（subagent 不可用时为
-  `{ ok: false, reason }`），主模型不执行 writer。
-- DSH 父端成功读取历史但无 eligible ordinary text message 时可发布空 capture；历史读取失败不能冒充空采集。窗口必须满足 `[startedAt, endedAt)`，queued 恢复不得扩大终态上界；验证需覆盖上界外事件排除与无有效时间的失败。writer claim 必须有真实 capture receipt，冲突 claim token 仍拒绝.
-- `claw_run search` 的召回列表对模型完全可见：`query` / `count` / `results[]` 的
-  `sourcePath`/`kind`/`snippet`/`score`，内部字段不泄漏。
-- Native one-shot 兼容路径中，同一 `finalizeId` 连续派发时 `subagents.start` 至多调用一次，running child 命中返回
-  `dispatch.ok === true` 且 `reused === true`；child 结算不自动授权再派，仍须核对 queued job。
-- `subagents` 缺失、capture 失败或 `start` 抛错时 `dispatch.ok === false` 且带安全诊断与
-  `guidance`；下一次系统入口只读核对规范 job 与 durable child，模型不得手动重试。
-- Native one-shot 兼容判重的服务层 `listChildren` 缺失、损坏或抛错时应 deferred，不启动第二个 child，不误报复用。
-
-## 关键检索词
-
-`dsh`、`DSH adapter`、`knowledgeDispatch`、`buildKnowledgeDelegateDispatch`、`claw_run`、
-`isSubagentPolicyHost`、`isHostActionsHost`、`delegate-writer`、`knowledge claim`、
-`search recall`、`compactClawOutput`
+Focused regression coverage includes `packages/dsh-adapter/test/finalizer-execute.test.mjs` and `packages/cli/test/source-knowledge.test.ts`. These tests do not establish live-host deployment or production finalizer E2E.
 
 <!-- state: history -->
 ## Evolution history
 
-<!-- dated: 2026-09-16 -->
-### 按 finalizeId 去重的 writer child 复用
+<!-- dated: 2026-10-29 -->
+### Source-plan handoff replaced claim protocol for DSH's new route
 
-此前 adapter 对每个 `knowledgeDispatch` 都无条件 `subagents.start("spawn", ...)` 一个新的
-one-shot writer child，不做判重；唯一能产生第二个 writer child 的路径是模型在
-`dispatch.ok === false` 后手动重试派发。该形态把"一个 finalizeId 一个 writer"完全交给模型
-自律。保留这段历史的用途是事故推理：出现重复 writer child 时先区分是判重失效还是手动重试。
+The new DSH source-plan route supplies the originating session key and complete plan as material coordinates, then uses ordinary non-capturing plan/subplan workflow. It does not create a new claim job or rely on token/done/receipt. The older claim-based process remains only for explicitly invoked legacy work; it is not automatically migrated or replayed.
 
-<!-- dated: 2026-10-01 -->
-### 原生去重的身份与未知结果边界
+<!-- dated: 2026-10-22 -->
+### Windows DSH 0.2.63 core smoke (historical)
 
-旧说明以 finalizeId 前 12 位作为 child label，并允许 child catalog 缺失或查询失败时 fail-open 启动。当前实现用完整 ID 标记 child，保留旧 label 识别，并在无法证明未投递时 deferred。保留此差异用于重启恢复和重复 writer 事故排查；delegate plan 的短标题不是 native 去重身份。该历史阶段尚未实施 Team 复用；现有 capability-selected role 也不授权重派旧 native job。
+A Windows session reported successful core workflow operations for that frozen candidate only. It did not establish later finalizer behavior or current installation state.
+
+<!-- dated: 2026-10-10 -->
+### Windows DSH 0.2.50 workflow smoke (historical)
+
+The session exercised core plan/task lifecycle, not post-plan knowledge finalization; it is not evidence for the present source-plan route.
+
+<!-- dated: 2026-10-03 -->
+### Cross-host execute-first beta verification (historical)
+
+Evidence applies only to the then-frozen batch and exercised paths, not current artifacts or live Codex hosting.
+
+<!-- dated: 2026-10-02 -->
+### Native-only dispatch compatibility baseline (historical)
+
+The prior route used claimable jobs and native child de-duplication. It remains relevant to legacy-job diagnosis only; it does not describe the new source-plan handoff.
+
+<!-- dated: 2026-08-22 -->
+### Earlier claim-time capture route (historical)
+
+Prior DSH versions captured task conclusions during claim and required token-protected completion. Those semantics are superseded for new DSH source-plan handoffs.

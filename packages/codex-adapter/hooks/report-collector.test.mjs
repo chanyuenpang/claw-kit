@@ -6,7 +6,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-test("claim collector captures ordinary conversation and bounds parent history", () => {
+test("collector includes the pre-plan request and replies while bounding ordinary conversation", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "claw-collector-"));
   try {
     const sessionId = "collector-parent";
@@ -20,8 +20,12 @@ test("claim collector captures ordinary conversation and bounds parent history",
     const user = (text, timestamp) => record({ type: "message", role: "user", content: [{ type: "input_text", text }] }, timestamp);
     const records = [
       user("Old request", "2026-10-02T00:00:00.000Z"),
+      record({ type: "message", role: "assistant", content: [{ type: "output_text", text: "Unrelated old reply" }] }, "2026-10-02T00:00:00.250Z"),
       user("Trigger request", "2026-10-02T00:00:00.500Z"),
-      record({ type: "message", role: "assistant", content: [{ type: "output_text", text: "Old assistant" }] }, "2026-10-02T00:00:00.750Z"),
+      record({ type: "message", role: "assistant", content: [{ type: "output_text", text: "First reply before plan creation" }] }, "2026-10-02T00:00:00.750Z"),
+      record({ type: "custom_tool_call", input: "pre-plan tool call" }, "2026-10-02T00:00:00.800Z"),
+      record({ type: "custom_tool_call_output", output: "pre-plan tool result" }, "2026-10-02T00:00:00.850Z"),
+      record({ type: "reasoning", summary: "pre-plan thinking" }, "2026-10-02T00:00:00.900Z"),
       user("Clarification"),
       record({ type: "message", role: "system", content: [{ text: "system secret" }] }),
       record({ type: "message", role: "assistant", content: [{ type: "thinking", text: "thinking secret" }, { type: "reasoning", text: "reasoning secret" }, { type: "tool_result", text: "tool secret" }] }),
@@ -46,7 +50,8 @@ test("claim collector captures ordinary conversation and bounds parent history",
     assert.equal(result.status, 0, result.stderr);
     const events = fs.readFileSync(report, "utf8").trim().split("\n").map(line => JSON.parse(line));
     assert.deepEqual(events.map(({ role, message }) => [role, message]), [
-      ["user", "Trigger request"], ["user", "Clarification"],
+      ["user", "Trigger request"], ["assistant", "First reply before plan creation"],
+      ["user", "Clarification"],
       ["assistant", "Quoted create example"], ["assistant", "Failed conclusion"],
       ["assistant", "Wrong task"], ["assistant", "Verified child task"],
       ["assistant", "Prior final"], ["assistant", "Out-of-order valid final"],

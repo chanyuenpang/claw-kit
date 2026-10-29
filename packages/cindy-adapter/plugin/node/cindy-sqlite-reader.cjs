@@ -457,7 +457,7 @@ function readPlanFinalAnswers(sessionId, startedAt, planPath, projectRoot, ended
     const endedAtMs = Date.parse(endedAt);
     const rows = readSessionMessages(match.db, match.cindySessionId);
     const answers = [];
-    let precedingUser;
+    let precedingConversation = [];
     const planCreateToolUseIds = new Set();
     for (const row of rows) {
       const raw = Number(row.created_at);
@@ -469,17 +469,16 @@ function readPlanFinalAnswers(sessionId, startedAt, planPath, projectRoot, ended
         role: row.role, occurredAt: new Date(time).toISOString(), message,
       } : undefined;
       if (Number.isFinite(startedAtMs) && time < startedAtMs) {
-        if (entry?.role === 'user') precedingUser = entry;
+        if (entry?.role === 'user') precedingConversation = [entry];
+        else if (entry && precedingConversation.length) precedingConversation.push(entry);
         continue;
       }
       if (row.role === 'tool_use' && row.tool_use_id && isPlanCreateToolUse(readJsonContent(row.content))) { planCreateToolUseIds.add(row.tool_use_id); continue; }
-      if (row.role === 'tool_result' && isNewPlanCreateResult(row, planCreateToolUseIds, planPath, projectRoot)) break;
+      if (Number.isFinite(startedAtMs) && row.role === 'tool_result' && isNewPlanCreateResult(row, planCreateToolUseIds, planPath, projectRoot)) break;
       if (entry) answers.push(entry);
     }
-    if (precedingUser) answers.unshift(precedingUser);
+    answers.unshift(...precedingConversation);
     return answers;
-  } catch {
-    return null;
   } finally {
     try { match.db.close(); } catch { /* fail open */ }
   }

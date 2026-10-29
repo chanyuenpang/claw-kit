@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { buildKnowledgeDispatch } from "./knowledge-dispatch.js";
+import { buildKnowledgeDispatch, buildSourceKnowledgeDispatch } from "./knowledge-dispatch.js";
+import { readSourceKnowledgeMaterials } from "./knowledge-materials.js";
 import { updateAgentInstructions } from "./agent-instructions.js";
 
 import fs from "node:fs";
@@ -84,7 +85,7 @@ import {
   type ProjectContext,
   type WorkflowGuidance,
   type KnowledgeFinalizationJob,
-  type KnowledgeDelegateDispatch,
+  type KnowledgeDispatch,
 } from "@veewo/claw-core";
 import { buildCodexDriverEnvelope, isCodexWorkflowArgv } from "./codex-driver.js";
 import { buildCodexHostActions } from "./codex-host-actions.js";
@@ -963,6 +964,7 @@ async function runCodex(args: string[]): Promise<void> {
     }
     const originalArgv = process.argv;
     try {
+      if (invocation[0] === "knowledge" && invocation[1] === "materials") registerCollectorBestEffort();
       process.argv = [originalArgv[0]!, originalArgv[1]!, ...invocation, "--host", "codex"];
       await main();
       registerCollectorBestEffort();
@@ -1465,6 +1467,13 @@ function runInternalDshFinalizerAlerts(args: string[]): void {
 async function runKnowledge(args: string[], effectiveHost?: ClawHost): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
+    case "materials": {
+      const sourceSessionKey = readRequiredFlag(args, "--source-session-key");
+      const sourcePlan = readRequiredFlag(args, "--source-plan");
+      assertNoRemainingArgs(args, "knowledge materials");
+      printJson(readSourceKnowledgeMaterials({ cwd: process.cwd(), host: effectiveHost, sourceSessionKey, sourcePlan }));
+      return;
+    }
     case "prepare": {
       const source = readRequiredFlag(args, "--source");
       const projectRoot = path.resolve(readRequiredFlag(args, "--project-root"));
@@ -1818,13 +1827,13 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         current
         && project
         && (isNativeKnowledgeFinalizationHost(effectiveHost))
-        && !current.plan.parentPlan
+        && ownerSessionKey
         && result.knowledgeFinalizeId
       )
-          ? buildKnowledgeDispatch({
-            // The isNativeKnowledgeFinalizationHost gate above guarantees this is codex | cindy | dsh.
+          ? buildSourceKnowledgeDispatch({
             host: effectiveHost as "codex" | "cindy" | "dsh",
-            finalizeId: result.knowledgeFinalizeId,
+            dispatchId: result.knowledgeFinalizeId,
+            sourceSessionKey: ownerSessionKey, sourcePlan: current.planPath, sourcePlanTitle: current.plan.title,
             projectRoot: project.projectRoot,
             writer: effectiveWriter,
           })
@@ -1934,13 +1943,13 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       });
       const knowledgeDispatch = (
         isNativeKnowledgeFinalizationHost(effectiveHost)
-        && !current.plan.parentPlan
+        && ownerSessionKey
         && result.knowledgeFinalizeId
       )
-          ? buildKnowledgeDispatch({
-            // The isNativeKnowledgeFinalizationHost gate above guarantees this is codex | cindy | dsh.
+          ? buildSourceKnowledgeDispatch({
             host: effectiveHost as "codex" | "cindy" | "dsh",
-            finalizeId: result.knowledgeFinalizeId,
+            dispatchId: result.knowledgeFinalizeId,
+            sourceSessionKey: ownerSessionKey, sourcePlan: current.planPath, sourcePlanTitle: current.plan.title,
             projectRoot: currentProject.projectRoot,
             writer: effectiveWriter,
           })
@@ -3480,7 +3489,7 @@ function compactPlanCommandResult(
   effectiveHost: ClawHost | undefined,
   completionRefresh?: CompletionRefreshResult,
   forceProjectionSync = false,
-  knowledgeDispatch?: KnowledgeDelegateDispatch,
+  knowledgeDispatch?: KnowledgeDispatch,
   ): Record<string, unknown> {
     const archivedPlanPath =
       completionRefresh?.taskRetention.archivedCurrentTask?.taskName === result.taskName &&

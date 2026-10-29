@@ -52,13 +52,12 @@ The separate skill artifact must be built and published under explicit release
 authorization before the online installation can succeed. Cindy normalizes either
 configured knowledge execution policy to the compatibility value `subagent`; the active
 Lead pre-dispatches one persistent, sidebar-visible Orca `knowledge_finalizer` Worker after the terminal
-mutation has created the durable job. The Worker creates the packaged session
-delegate plan and calls the plugin's atomic `knowledge.claim`, which captures
-the originating Cindy task conclusions into the adjacent report before issuing
-a token. It executes the returned assignment template as a subplan and
-acknowledges completion through `knowledge.done`. Cindy does not use an
-errand or a Stop hook for knowledge finalization; legacy background jobs are
-diagnostic-only and are not launched.
+mutation returns its source-plan handoff. The Worker calls Ghost `knowledge.materials`
+with the source session key and full plan path, reads the complete plan and ordinary
+conversation, and executes the returned non-capturing auxiliary plan and knowledge
+subplan. Ordinary plan completion is the outcome; there is no new claimable job,
+claim token, receipt, or separate done registration. Cindy does not use an errand
+or a Stop hook for finalization, and does not automatically scan or resume old jobs.
 The Ghost Node worker owns a separate persistent CLI session transport per workdir/session ID. A successful `plan.done` releases that CLI after sending its response (including any knowledge-dispatch envelope), unless a newer request already began; quiescent unfinished-plan transports expire after 10 minutes without queued or running commands. The same session ID then reopens against retained CLI state. This does not stop the independent Orca finalizer Worker. `claw/session-transports` is a read-only worker RPC reporting workspace/session ID, direct child PID, active/idle/reclaiming state, pending count and close reason; `session-transport-*` events in the worker log record opens, exits and reclamation. `CLAW_CINDY_SESSION_IDLE_MS` may set a positive integer of at least 1000 ms for controlled tests or deployment tuning.
 Cindy's `whenToUse` identifies every session start as an entry scenario and names
 the public `using-claw-kit` skill. The `will-user-message` hook appends the Cindy

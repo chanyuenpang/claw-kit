@@ -1,6 +1,10 @@
 ﻿# ADR: Hook-owned consistency-aware knowledge finalization
 
+<!-- document-state: superseded -->
+
 ## Context
+
+This decision describes the former claimable-job protocol. It is superseded for the DSH, Codex, and Cindy source-plan handoff by [source-plan knowledge handoff ADR](source-plan-knowledge-handoff.md); legacy explicit jobs and OpenCode's existing route retain their compatibility behavior.
 
 计划进入 `end.*` 后需要把可信的 `plan.json` 与相邻 turn report 沉淀为可复用 Truth 和 durable ADR，但 foreground plan lifecycle 不能等待 writer，也不能让 main agent 临场决定 writer 路由、模型替换或 canonical 文件位置。Codex 与 OpenCode 还需要使用各自的原生 runner，而 detached worker 不能因自身 Stop/SessionStart hook 再次排队形成递归 finalization。
 

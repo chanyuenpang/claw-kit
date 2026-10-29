@@ -1,115 +1,48 @@
-import { test } from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
-import { finalizerChildLabel, resolveFinalizerReuse } from "../lib/index.js";
-
-// One in-process flight and a trustworthy native child catalog prevent
-// duplicate starts. Core still owns the exclusive claim and assignment gate.
-
-const label = finalizerChildLabel("abcdef0123456789");
-
-test("native finalizer label uses full ID so colliding title prefixes stay isolated", () => {
-  assert.equal(label, "knowledge-finalizer-abcdef0123456789");
-  assert.notEqual(finalizerChildLabel("abcdef012345aaaaaaaa"), finalizerChildLabel("abcdef012345bbbbbbbb"));
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { createSourceFinalizerDispatcher } from "../lib/source-finalizer.js";
+function fixture(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "claw-source-delivery-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  return { agent: { id: "parent" }, root, task: { schemaVersion: 2, dispatchId: "a".repeat(64), projectRoot: root, sourceSessionKey: "parent", sourcePlan: path.join(root, "plan.json"), prompt: "write knowledge" } };
+}
+test("new handoffs need no catalog, capture, claim or terminal job and deduplicate across reload", async t => {
+  const f = fixture(t); let starts = 0;
+  const options = { getService: name => { assert.equal(name, "subagents"); return { startActivation: async () => ({ childId: "child-" + ++starts }) }; }, selectModel: async () => { throw new Error("advisory metadata unavailable"); } };
+  const dispatch = createSourceFinalizerDispatcher(options);
+  const results = await Promise.all([dispatch(f.agent, f.root, f.task), dispatch(f.agent, f.root, f.task)]);
+  assert.ok(results.every(r => r.ok)); assert.equal(starts, 1);
+  assert.equal((await createSourceFinalizerDispatcher(options)(f.agent, f.root, f.task)).delivery, "accepted");
+  assert.equal(starts, 1);
+  assert.equal((await dispatch(f.agent, f.root, { ...f.task, dispatchId: "b".repeat(64) })).ok, true);
+  assert.equal(starts, 2, "a second plan does not wait for a claim or dual terminal proof");
 });
-
-test("an unsettled in-process record reuses without touching the durable catalog", async () => {
-  let listCalls = 0;
-  const records = new Map([["f1", { runId: "run-1", settled: false }]]);
-
-  const reused = await resolveFinalizerReuse({
-    finalizeId: "f1",
-    parentSessionId: "parent",
-    label,
-    records,
-    subagents: {
-      start: async () => ({ id: "unused" }),
-      listChildren: async () => {
-        listCalls += 1;
-        return [];
-      },
-    },
-  });
-
-  assert.deepEqual(reused, { runId: "run-1", source: "in-process" });
-  assert.equal(listCalls, 0, "the in-process record must short-circuit the durable query");
+test("unknown native admission is reported and never resent", async t => {
+  const f = fixture(t); let starts = 0;
+  const options = { getService: () => ({ startActivation: async () => { starts++; throw Object.assign(new Error("lost ack"), { code: "NATIVE_ACK_LOST", outcome: "unknown" }); } }), selectModel: async () => undefined };
+  const first = await createSourceFinalizerDispatcher(options)(f.agent, f.root, f.task);
+  assert.equal(first.code, "NATIVE_ACK_LOST"); assert.equal(first.delivery, "unknown");
+  await createSourceFinalizerDispatcher(options)(f.agent, f.root, f.task);
+  assert.equal(starts, 1);
 });
-
-test("a settled record stops blocking: the next dispatch may start a new child", async () => {
-  const records = new Map([["f1", { runId: "run-1", settled: true }]]);
-  let listCalls = 0;
-
-  const reused = await resolveFinalizerReuse({
-    finalizeId: "f1",
-    parentSessionId: "parent",
-    label,
-    records,
-    subagents: {
-      start: async () => ({ id: "unused" }),
-      listChildren: async () => {
-        listCalls += 1;
-        return [];
-      },
-    },
-  });
-
-  assert.equal(reused, undefined, "a settled child must not be reported as reusable");
-  assert.equal(listCalls, 1, "settlement must fall through to the durable query, not short-circuit it");
+test("old jobs are not resumed and delivery-log failure does not veto new work", async t => {
+  const f = fixture(t); let starts = 0;
+  const dispatch = createSourceFinalizerDispatcher({ getService: () => ({ startActivation: async () => { starts++; return { childId: "child" }; } }), selectModel: async () => undefined });
+  assert.equal((await dispatch(f.agent, f.root, { finalizeId: "old", schemaVersion: 1 })).code, "LEGACY_FINALIZER_NOT_RESUMED");
+  const file = path.join(f.root, "not-a-directory"); fs.writeFileSync(file, "fixture");
+  const result = await dispatch(f.agent, f.root, { ...f.task, projectRoot: file });
+  assert.equal(result.ok, true); assert.ok(result.logWarning); assert.equal(starts, 1);
 });
-
-test("a still-running durable child with the finalizeId label is reused", async () => {
-  const reused = await resolveFinalizerReuse({
-    finalizeId: "abcdef0123456789",
-    parentSessionId: "parent",
-    label,
-    records: new Map(),
-    subagents: {
-      start: async () => ({ id: "unused" }),
-      listChildren: async (parentSessionId) => {
-        assert.equal(parentSessionId, "parent");
-        return [
-          { kind: "child", id: "other", activity: "running", label: "knowledge-finalizer-ffffffffffff" },
-          { kind: "child", id: "child-1", activity: "running", mode: "one-shot", label },
-        ];
-      },
-    },
-  });
-
-  assert.deepEqual(reused, { runId: "child-1", source: "durable" });
-});
-
-test("current durable catalog without kind/activity prevents replay after restart", async () => {
-  const reused = await resolveFinalizerReuse({
-    finalizeId: "abcdef0123456789", parentSessionId: "parent", label, records: new Map(),
-    subagents: { start: async () => { throw new Error("must not start"); },
-      listChildren: async () => [{ id: "existing", mode: "one-shot", label, createdAt: 1 }] },
-  });
-  assert.deepEqual(reused, { runId: "existing", source: "durable" });
-});
-
-test("the durable query ignores inactive, mislabelled and diagnostic rows", async () => {
-  const run = async (children) => resolveFinalizerReuse({
-    finalizeId: "abcdef0123456789",
-    parentSessionId: "parent",
-    label,
-    records: new Map(),
-    subagents: { start: async () => ({ id: "unused" }), listChildren: async () => children },
-  });
-
-  assert.equal(await run([{ kind: "child", id: "gone", activity: "inactive", label }]), undefined);
-  assert.equal(await run([{ kind: "child", id: "wrong", activity: "running", label: "other" }]), undefined);
-  assert.deepEqual(await run([{ kind: "diagnostic", id: "damaged", reason: "corrupt" }]),
-    { deferred: true, reason: "native child catalog incomplete" });
-  assert.equal(await run([]), undefined);
-});
-
-test("an unavailable child catalog defers rather than risking a duplicate start", async () => {
-  const base = { finalizeId: "abcdef0123456789", parentSessionId: "parent", label, records: new Map() };
-  assert.deepEqual(await resolveFinalizerReuse({ ...base }), { deferred: true, reason: "native child catalog unavailable" });
-  assert.deepEqual(await resolveFinalizerReuse({
-    ...base, subagents: { start: async () => ({ id: "unused" }) },
-  }), { deferred: true, reason: "native child catalog unavailable" });
-  assert.deepEqual(await resolveFinalizerReuse({
-    ...base, subagents: { start: async () => ({ id: "unused" }),
-      listChildren: async () => { throw new Error("projection registry not mounted"); } },
-  }), { deferred: true, reason: "native child catalog lookup failed" });
+test("a proven no-effect rejection permits a later explicit delivery", async t => {
+  const f = fixture(t); let calls = 0;
+  const dispatch = createSourceFinalizerDispatcher({ selectModel: async () => undefined, getService: () => ({ startActivation: async () => {
+    if (++calls === 1) throw Object.assign(new Error("temporarily unavailable"), { code: "NATIVE_UNAVAILABLE", outcome: "known", effect: "none", phase: "before-call" });
+    return { childId: "writer" };
+  } }) });
+  assert.equal((await dispatch(f.agent, f.root, f.task)).delivery, "rejected");
+  assert.equal((await dispatch(f.agent, f.root, f.task)).delivery, "accepted");
+  assert.equal(calls, 2);
 });

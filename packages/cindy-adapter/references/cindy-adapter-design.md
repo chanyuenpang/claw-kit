@@ -74,7 +74,7 @@ The Cindy mapping follows the existing OpenCode adapter's event responsibilities
 | OpenCode first-message synthetic context | unsupported in Cindy until the Host provides trusted message context |
 | turn-end plan inspection | no CLI polling; the latest typed command result is the state source |
 | `process.active` continuation | Ghost Hook queues one background `agent.run` continuation after the assistant turn; the `.claw` plan status remains the gate |
-| completion knowledge closeout | Cindy normalizes every configured policy to the compatibility value `subagent`; it always means the Orca `knowledge_finalizer` Worker, never a native subagent. The terminal mutation creates the durable job and returns that Worker dispatch. The Worker atomically captures Cindy SQLite task conclusions during `knowledge.claim`, then owns claim/assignments/done without a Stop hook or errand. |
+| completion knowledge closeout | The terminal mutation returns a source-plan handoff to one Orca `knowledge_finalizer` Worker. Ghost `knowledge.materials` reads the full plan and ordinary conversation; an ordinary non-capturing plan and knowledge subplan own completion. No new claim job or independent result registration is involved. |
 
 The plugin subscribes to the `session` topic, but its `did-session-created`
 handler performs no awaited work: it records the event and defers preparation
@@ -172,20 +172,17 @@ the `.claw` plan remains the continuation gate and source of truth.
 
 ## 8. Completion closeout
 
-After all plan tasks are complete, the terminal mutation creates one durable
-Orca Worker job and returns its immutable `knowledgeDispatch` to the active Lead.
-The Lead sends that prompt unchanged to the persistent Orca
-`knowledge_finalizer` and returns without waiting.
+After source-plan completion, the Lead sends the returned prompt unchanged to
+one Orca knowledge Worker, then returns without waiting. The Worker reads the
+complete source plan and bounded user/assistant conversation using Ghost
+`knowledge.materials`. Cindy's SQLite reader includes the nearest preceding
+user request and assistant replies, but excludes reasoning and tools.
 
-The Worker calls `knowledge.claim`. Before issuing the claim token, the Cindy
-adapter opens Cindy's local SQLite database read-only, locates the originating
-session and terminal mutation, extracts successful `task.done` conclusions, and
-atomically materializes the adjacent `plan.report`. The claim returns a frozen
-assignment template, which the Worker executes as a session subplan before it
-calls `knowledge.done`. Neither job creation nor report capture
-depends on `did-turn-end`, `will-assistant-message`, or the Lead's final answer.
-The closeout remains bounded to the originating project and plan; failures stay
-visible and retryable rather than silently marking the job succeeded.
+The returned templates are ordinary non-capturing plans: follow the knowledge
+subplan and close the auxiliary plan with the actual outcome. No claim token,
+TTL, immutable report admission, receipt polling or independent done operation
+is required. Missing material remains a visible diagnostic for worker judgment.
+No turn-end hook or later Lead reply is needed; old jobs are left untouched.
 
 ## 9. Acceptance scenarios
 

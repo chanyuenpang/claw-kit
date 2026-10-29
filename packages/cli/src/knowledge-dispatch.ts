@@ -2,10 +2,35 @@ import {
   buildKnowledgeFinalizationTask,
   knowledgeDelegateTemplatePath, cindyKnowledgeDelegateTemplatePath, dshKnowledgeDelegateTemplatePath,
   KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION,
-  type KnowledgeFinalizationTask, type KnowledgeDelegateDispatch,
+  type KnowledgeFinalizationTask, type KnowledgeDelegateDispatch, type SourceKnowledgeTask, type SourceKnowledgeDispatch,
 } from "@veewo/claw-core";
 
-/** Adapter presentation only. Host/session authorization stays in the business owner. */
+export function buildSourceKnowledgeDispatch(task: Omit<SourceKnowledgeTask, "schemaVersion" | "kind">): SourceKnowledgeDispatch {
+  const input = { sourceSessionKey: task.sourceSessionKey, sourcePlan: task.sourcePlan };
+  const read = task.host === "dsh"
+    ? `Use claw_run knowledge.materials with args ${JSON.stringify({ source_session_key: input.sourceSessionKey, source_plan: input.sourcePlan })}.`
+    : task.host === "cindy"
+      ? `Use the Cindy Ghost knowledge.materials tool with ${JSON.stringify(input)}.`
+      : `Use the Codex driver with argv ${JSON.stringify(["knowledge", "materials", "--source-session-key", input.sourceSessionKey, "--source-plan", input.sourcePlan])}.`;
+  return { ...task, schemaVersion: 2, kind: "knowledge.finalize", preferReuse: false,
+    ...(task.host !== "dsh" ? { leadInstruction: "Start one knowledge writer with the supplied prompt. After accepted handoff, end the lead turn without waiting for the writer." } : {}),
+    ...(task.writer?.model ? { model: task.writer.model } : {}),
+    ...(task.writer?.reasoningEffort ? { reasoningEffort: task.writer.reasoningEffort } : {}),
+    prompt: [
+      "Maintain project knowledge from this source plan using ordinary claw plans and subplans.",
+      "Host: " + task.host, "Project root: " + JSON.stringify(task.projectRoot),
+      "Source session key: " + task.sourceSessionKey, "Complete source plan: " + JSON.stringify(task.sourcePlan),
+      "Source plan title: " + task.sourcePlanTitle,
+      "Load using-claw-kit for this host and work in the specified project root. Use your own worker session for workflow operations; the source session is only a material-reading target.",
+      read,
+      "Read the complete source plan and available conversation. You may search for supporting context as needed.",
+      "Create an ordinary auxiliary plan with knowledge_capture=false using the returned templatePath. Follow its governance subplan and complete the ordinary plan with the actual outcome.",
+      "Report changed documents, justified no-edit results, or unfinished work. Do not start another writer.",
+    ].join("\n"),
+  };
+}
+
+/** Legacy adapter presentation for explicitly invoked old jobs and OpenCode. */
 export function renderKnowledgeDispatch(task: KnowledgeFinalizationTask): KnowledgeDelegateDispatch {
   const title = "knowledge-finalizer-" + (task.host === "dsh" ? task.finalizeId : task.finalizeId.slice(0, 12));
   const template = task.host === "dsh" ? dshKnowledgeDelegateTemplatePath()

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { serializeFailure } from "@veewo/claw-core";
 import { createHash } from "node:crypto";
 
-export const CODEX_DRIVER_VERSION = 27;
+export const CODEX_DRIVER_VERSION = 28;
 export const CODEX_HOST_ACTION_SCHEMA_VERSION = 1;
 export const CODEX_DRIVER_CACHE_KEY =
   `claw-kit:codex-driver:v${CODEX_DRIVER_VERSION}:s${CODEX_HOST_ACTION_SCHEMA_VERSION}`;
@@ -26,7 +26,7 @@ export function isCodexWorkflowArgv(argv: unknown): argv is string[] {
     && !argv.includes("--host")
     && (["plan", "task", "subplan"].includes(argv[0])
       || (argv[0] === "context" && argv.length === 1)
-      || (argv[0] === "knowledge" && ["claim", "claim-receipt", "done", "done-receipt"].includes(argv[1])));
+      || (argv[0] === "knowledge" && ["materials", "claim", "claim-receipt", "done", "done-receipt"].includes(argv[1])));
 }
 
 async function codexDriverRunner(
@@ -66,9 +66,6 @@ async function codexDriverRunner(
       .map((key) => (raw as Record<string, unknown>)[key])
       .filter((value): value is string => typeof value === "string" && value.length > 0);
   const outputText = [...new Set(outputParts)].join("\n");
-  if (outputParts.length === 0) {
-    throw new TypeError("claw command returned no text output");
-  }
 
   let result: Record<string, unknown> | undefined;
   let protocolError: Record<string, unknown> | undefined;
@@ -125,7 +122,17 @@ async function codexDriverRunner(
         code: protocolError.code, phase: protocolError.phase, effect: protocolError.effect, outcome: protocolError.outcome,
       });
     }
-    throw new Error("claw returned no valid JSON protocol result");
+    const shell = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const shellError = shell.error && typeof shell.error === "object" ? shell.error as Record<string, unknown> : {};
+    const ownerCode = shellError.code ?? shell.code;
+    const code = typeof ownerCode === "string" && /^[A-Za-z][A-Za-z0-9_.:-]{0,119}$/.test(ownerCode)
+      ? ownerCode : "CLAW_PROTOCOL_RESPONSE_UNAVAILABLE";
+    const exitCode = shell.exit_code ?? shell.exitCode;
+    const diagnostic = (outputText || String(shellError.message ?? "No text output"))
+      .replace(/((?:authorization|api[_-]?key|password|claimToken|claim_token|token)["\s]*[:=]\s*["']?)[^"'\s,}]+/gi, "$1[redacted]")
+      .replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]").slice(0, 1600);
+    throw Object.assign(new Error(`claw returned no valid JSON protocol result${typeof exitCode === "number" ? ` (exit ${exitCode})` : ""}: ${diagnostic}`),
+      { code, phase: "transport", outcome: "unknown", effect: "unknown", ...(typeof exitCode === "number" ? { exitCode } : {}) });
   }
 
   if (result.ok !== true) {

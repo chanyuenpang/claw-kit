@@ -1,6 +1,8 @@
 ﻿# ADR: DSH knowledge finalization preserves the delegate lifecycle
 
-This ADR owns DSH host integration and the ready-job/claim/done lifecycle. Backend selection and reusable-role decisions belong to [delegation ownership](<dsh-delegation-contract-ownership.md>). Native one-shot remains a compatibility path, not the mandatory backend for new jobs. This source decision does not claim live profile activation.
+<!-- document-state: superseded -->
+
+This historical decision described DSH ready-job/claim/done lifecycle. The new DSH source-plan path is owned by [source-plan handoff ADR](source-plan-knowledge-handoff.md); explicit old jobs retain compatibility semantics. Backend and reusable-role decisions for the old path remain in [delegation ownership](<dsh-delegation-contract-ownership.md>). This decision does not claim live profile activation.
 
 ## Context
 

@@ -239,6 +239,9 @@ export function daemonInput(operation: string, args: Record<string, unknown>): u
         ...(str("template", "template_name") !== undefined ? { templateName: str("template", "template_name") } : {}),
         ...(str("template_file") !== undefined ? { templateFile: str("template_file") } : {}),
       };
+    case "knowledge.materials":
+      assertKnownArgs(operation, args, ["source_session_key", "source_plan"]);
+      return { sourceSessionKey: str("source_session_key"), sourcePlan: str("source_plan") };
     case "knowledge.claim":
     case "knowledge.claim.receipt":
       assertKnownArgs(operation, args, ["finalize_id"]);

@@ -1,23 +1,21 @@
 /** Extract only ordinary text blocks, never reasoning or tool payloads. */
 export declare function textFromContent(content: unknown): string;
+type MessageLike = {
+    id?: string;
+    role?: string;
+    source?: {
+        kind?: string;
+    };
+    content?: unknown;
+};
 export type EventLike = {
     seq?: number;
     time?: number;
     type?: string;
-    data?: {
+    data?: MessageLike & {
         turn?: number;
-        message?: {
-            id?: string;
-            content?: unknown;
-        };
-        inserted?: Array<{
-            id?: string;
-            role?: string;
-            source?: {
-                kind?: string;
-            };
-            content?: unknown;
-        }>;
+        message?: MessageLike;
+        inserted?: MessageLike[];
     };
 };
 /** Collect visible conversation without requiring a completed turn or a final channel. */
@@ -31,3 +29,4 @@ export declare function extractPlanConversation(events: EventLike[], sessionId: 
     context?: "plan_request";
     message: string;
 }[];
+export {};

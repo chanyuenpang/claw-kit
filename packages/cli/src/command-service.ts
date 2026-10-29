@@ -1,4 +1,5 @@
-import { buildKnowledgeDispatch } from "./knowledge-dispatch.js";
+import { buildKnowledgeDispatch, buildSourceKnowledgeDispatch } from "./knowledge-dispatch.js";
+import { readSourceKnowledgeMaterials } from "./knowledge-materials.js";
 import { buildMemoryIndexWithoutBlocking } from "./memory-index-job.js";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -45,7 +46,8 @@ import {
   type PlanWriteInput,
   type SubplanWriteInput,
   type WorkflowGuidance,
-  type KnowledgeDelegateDispatch,
+  type KnowledgeDispatch,
+  isSourceKnowledgeHost, deriveKnowledgeFinalizeId,
   writePlan,
   resolveThreadGoalPlan,
   resolveHostIntegrationProfile,
@@ -53,7 +55,7 @@ import {
 } from "@veewo/claw-core";
 import type {
   ClawHostActionV1,
-  ClawKnowledgeDispatchV1,
+  ClawKnowledgeDispatch,
   ClawPostCommitEffectV1,
 } from "@veewo/claw-client";
 import { buildCodexHostActions } from "./codex-host-actions.js";
@@ -76,7 +78,7 @@ export type ClawCommandResult = {
   output: unknown;
   hostActions?: ClawHostActionV1[];
   postCommitEffects?: ClawPostCommitEffectV1[];
-  knowledgeDispatch?: ClawKnowledgeDispatchV1;
+  knowledgeDispatch?: ClawKnowledgeDispatch;
 };
 
 import { scheduleCompletionRefreshRecovery } from "./completion-refresh-scheduler.js";
@@ -495,6 +497,10 @@ export class ClawCommandService {
       case "search.index.refresh":
         // The session daemon owns cwd; callers cannot target another project.
         return { output: await buildMemoryIndexWithoutBlocking(cwd) };
+      case "knowledge.materials": {
+        const input = request.input as { sourceSessionKey: string; sourcePlan: string };
+        return { output: readSourceKnowledgeMaterials({ cwd, host: context.host, ...input }) };
+      }
       case "knowledge.claim":
       case "knowledge.claim.receipt": {
         const { finalizeId } = request.input as { finalizeId: string };
@@ -958,7 +964,7 @@ export class ClawCommandService {
     context: CommandContext,
     entered: Array<{ ref: PlanRef; plan: import("@veewo/claw-core").PlanDocument; endedAt: string }>,
     resumed?: PlanRef,
-  ): KnowledgeDelegateDispatch | undefined {
+  ): KnowledgeDispatch | undefined {
     if (!context.agentSessionId || entered.length === 0) return undefined;
     const project = this.resolveProject(context, entered[0]?.ref.scope);
     if (project.scope !== "project") return undefined;
@@ -971,7 +977,7 @@ export class ClawCommandService {
           ownerSessionKey: this.ownerSessionKey(context),
         }).planPath
       : undefined;
-    let dispatch: KnowledgeDelegateDispatch | undefined;
+    let dispatch: KnowledgeDispatch | undefined;
     for (const ended of entered) {
       const shown = showPlan({
         cwd: context.cwd,
@@ -986,11 +992,19 @@ export class ClawCommandService {
         if (ended.plan.leaveReason === "switch_to_new_plan"
           && resumed?.taskName === ended.ref.taskName && resumed.taskPath === ended.ref.taskPath
           && resumed.scope === ended.ref.scope) continue;
-        tryLeaveKnowledgePlan({ project, sessionId: context.agentSessionId, leftPlanPath: shown.planPath, knowledgeCapture: ended.plan.knowledgeCapture });
+        if (!isSourceKnowledgeHost(context.host)) tryLeaveKnowledgePlan({ project, sessionId: context.agentSessionId, leftPlanPath: shown.planPath, knowledgeCapture: ended.plan.knowledgeCapture });
         continue;
       }
       const effectiveConfig = resolvePlanEffectiveConfig(project.projectConfig, ended.plan);
       const writer = resolveKnowledgeWriterForHost(effectiveConfig?.knowledgeWriter, context.host, project.projectConfig?.knowledgeWriterByHost);
+      if (isSourceKnowledgeHost(context.host)) {
+        if (ended.plan.knowledgeCapture !== false) dispatch = buildSourceKnowledgeDispatch({
+          host: context.host, projectRoot: project.projectRoot, writer,
+          dispatchId: deriveKnowledgeFinalizeId({ sessionId: context.agentSessionId, planPath: shown.planPath, endedAt: ended.endedAt }),
+          sourceSessionKey: context.agentSessionId, sourcePlan: shown.planPath, sourcePlanTitle: ended.plan.title,
+        });
+        continue;
+      }
       const knowledgeEnd = tryEndKnowledgePlan({
         project,
         sessionId: context.agentSessionId,

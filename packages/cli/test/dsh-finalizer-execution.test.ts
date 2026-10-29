@@ -84,6 +84,7 @@ test("host conversation publication preserves user roles and all ordinary assist
   });
   publishDshHostReport({ ...f.common, collectorVersion: "conversation-v1", events: [
     { ...entry("request", "user", "2026-10-01T09:59:59.000Z"), context: "plan_request" },
+    { ...entry("pre-plan reply", "assistant", "2026-10-01T09:59:59.500Z"), context: "plan_request" },
     entry("commentary", "assistant", startedAt),
     entry("correction", "user", "2026-10-01T10:00:20.000Z"),
     entry("penultimate-summary", "assistant", "2026-10-01T10:00:30.000Z"),
@@ -91,8 +92,8 @@ test("host conversation publication preserves user roles and all ordinary assist
     entry("after-plan", "assistant", endedAt),
   ] });
   const rows = fs.readFileSync(f.job.reportPath, "utf8").trim().split("\n").map((line) => JSON.parse(line));
-  assert.deepEqual(rows.map((row) => row.message), ["request", "commentary", "correction", "penultimate-summary", "short-final"]);
-  assert.deepEqual(rows.map((row) => row.role), ["user", "assistant", "user", "assistant", "assistant"]);
+  assert.deepEqual(rows.map((row) => row.message), ["request", "pre-plan reply", "commentary", "correction", "penultimate-summary", "short-final"]);
+  assert.deepEqual(rows.map((row) => row.role), ["user", "assistant", "assistant", "user", "assistant", "assistant"]);
 });
 
 test("bounded capture rejects missing or invalid timestamps instead of fabricating empty history", (t) => {

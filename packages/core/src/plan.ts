@@ -12,6 +12,7 @@ import { assertSingleTaskActivation, currentPlanTask } from "./task-focus.js";
 import { isIntegrationHost, resolveHostIntegrationProfile } from "./integration-contract.js";
 import { readJsonFile, withFileLock, withSerializedAccess, writeJsonFile } from "./io.js";
 import { tryEndKnowledgePlan, tryLeaveKnowledgePlan, tryRegisterKnowledgePlan } from "./knowledge-sidecar.js";
+import { isSourceKnowledgeHost } from "./knowledge-assignments.js";
 import { buildPlanEvent } from "./plan-events.js";
 import {
   isProcessStatus,
@@ -273,6 +274,7 @@ async function writePlanWithOutcome(input: PlanWriteInput, execution: ClawExecut
     ownerSessionKey: input.ownerSessionKey,
     scope: project.scope,
   });
+  plan.createdAt = existing ? existing.createdAt : new Date().toISOString();
   plan.updatedAt = new Date().toISOString();
   Object.assign(execution, { phase: "commit", outcome: "unknown", effect: "unknown" });
   if (input.commitSubplan) {
@@ -739,7 +741,7 @@ async function editPlanWithOutcome(input: PlanEditInput, execution: ClawExecutio
           : {}),
       });
       knowledgeFinalizeId = knowledgeEnd.finalizeId;
-    } else if (enteredEndTerminal && next.status === "end.leave" && resultPlan.knowledgeCapture) {
+    } else if (enteredEndTerminal && next.status === "end.leave" && resultPlan.knowledgeCapture && !isSourceKnowledgeHost(input.host)) {
       // Leaving is best-effort detachment, never a prerequisite for a knowledge write.
       tryLeaveKnowledgePlan({ project: task.project, sessionId: input.ownerSessionKey, leftPlanPath: planPath });
     } else if (!resultPlan.status.startsWith("end.") && resultPlan.knowledgeCapture) {

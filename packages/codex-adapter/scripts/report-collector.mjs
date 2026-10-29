@@ -3,14 +3,14 @@ import os from "node:os";
 import path from "node:path";
 
 const request = await readJson();
-if (!request || request.host !== "codex") process.exit(2);
+if (!request || request.host !== "codex") fail(2, "CODEX_SOURCE_REQUEST_INVALID", "Expected a Codex source-material request.");
 const transcript = findTranscript(request.sessionId);
-if (!transcript) process.exit(3);
+if (!transcript) fail(3, "CODEX_SOURCE_SESSION_UNAVAILABLE", "The source session transcript is unavailable.");
 const startedAt = request.startedAt ? Date.parse(request.startedAt) : Number.NaN;
 const endedAt = request.endedAt ? Date.parse(request.endedAt) : Number.NaN;
-if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt) || endedAt < startedAt) process.exit(4);
+if (!Number.isFinite(endedAt) || (Number.isFinite(startedAt) && endedAt < startedAt)) fail(4, "CODEX_SOURCE_BOUNDARY_UNAVAILABLE", "The source plan has no usable end boundary.");
 const events = [];
-let precedingUser;
+let precedingConversation = [];
 for (const [sequence, line] of fs.readFileSync(transcript, "utf8").split(/\r?\n/).entries()) {
   let record;
   try { record = JSON.parse(line); } catch { continue; }
@@ -28,17 +28,25 @@ for (const [sequence, line] of fs.readFileSync(transcript, "utf8").split(/\r?\n/
     turnId: payload.internal_chat_message_metadata_passthrough?.turn_id ?? ("message:" + sequence), message,
   } : undefined;
   if (time < startedAt) {
-    if (entry?.role === "user" && (!precedingUser || time >= Date.parse(precedingUser.occurredAt))) precedingUser = entry;
+    // Keep the request and the ordinary replies that led to plan creation.
+    // Start the lead-in at the nearest preceding user message.
+    if (entry?.role === "user") precedingConversation = [entry];
+    else if (entry && precedingConversation.length) precedingConversation.push(entry);
     continue;
   }
-  if (isNewPlan(record, request.planPath)) break;
+  if (Number.isFinite(startedAt) && isNewPlan(record, request.planPath)) break;
   if (entry) events.push(entry);
 }
-// Include only the nearest available triggering user, not the preceding session.
-if (precedingUser) events.push(precedingUser);
+// Include the nearest user-led exchange, not unrelated preceding session history.
+events.push(...precedingConversation);
 events.sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt) || a.sequence - b.sequence);
 fs.mkdirSync(path.dirname(request.stagingReportPath), { recursive: true });
 fs.writeFileSync(request.stagingReportPath, events.length ? `${events.map(({ sequence, ...entry }) => JSON.stringify(entry)).join("\n")}\n` : "", "utf8");
+
+function fail(exitCode, code, message) {
+  process.stderr.write(JSON.stringify({ error: { code, message } }) + "\n");
+  process.exit(exitCode);
+}
 
 function isNewPlan(record, planPath) {
   const output = record?.payload?.output;

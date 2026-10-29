@@ -133,29 +133,8 @@ const OPERATION_CATALOG = {
     },
   ],
   knowledge: [
-    {
-      name: 'knowledge.claim',
-      description: 'Atomically capture the originating Cindy task conclusions and claim a ready knowledge-finalization job.',
-      mutates: true,
-      parameters: objectParameters({ finalizeId: stringParameter('Finalization id returned by plan completion.') }, ['finalizeId']),
-    },
-    { name: 'knowledge.claim.receipt', description: 'Recover the authenticated claim materials without claiming again.', mutates: false,
-      parameters: objectParameters({ finalizeId: stringParameter('Exact finalization id.') }, ['finalizeId']) },
-    { name: 'knowledge.done.receipt', description: 'Read the authenticated canonical completion result without mutation.', mutates: false,
-      parameters: objectParameters({ finalizeId: stringParameter('Exact finalization id.'), claimToken: stringParameter('Optional legacy credential.'),
-        expectedStatus: { type: 'string', enum: ['succeeded', 'failed'] }, expectedResult: stringParameter('Expected outcome text for receipt matching.') }, ['finalizeId']) },
-    {
-      name: 'knowledge.done',
-      description: 'Complete a claimed knowledge-finalization job exactly once.',
-      mutates: true,
-      parameters: objectParameters({
-        finalizeId: stringParameter('Finalization id returned by plan completion.'),
-        claimToken: stringParameter('Optional legacy credential; Core resolves the canonical session claim and rejects a wrong explicit value.'),
-        status: { type: 'string', enum: ['succeeded', 'failed'], description: 'Terminal finalization status.' },
-        result: stringParameter('Concise success result.'),
-        error: stringParameter('Concise failure reason.'),
-      }, ['finalizeId', 'status']),
-    },
+    { name: 'knowledge.materials', description: 'Read the complete source plan and its ordinary conversation, and provide non-capturing writer templates.', mutates: false,
+      parameters: objectParameters({ sourceSessionKey: stringParameter('Source conversation session key.'), sourcePlan: stringParameter('Complete source plan path.') }, ['sourceSessionKey', 'sourcePlan']) },
   ],
 };
 
@@ -490,6 +469,7 @@ function sessionRequest(name, args, workdir) {
       ...(typeof args.template === 'string' ? { templateName: args.template } : {}),
       ...(typeof args.templateFile === 'string' ? { templateFile: path.resolve(args.templateFile) } : {}),
     } };
+    case 'knowledge.materials':
     case 'knowledge.claim':
     case 'knowledge.claim.receipt':
     case 'knowledge.done':
@@ -1047,16 +1027,9 @@ rpcInput.on('line', async (line) => {
       });
       return;
     }
-    const reconciliation = await runClaw([
-      'knowledge', 'list',
-      '--project-root', params.workdir,
-      '--session-key', params.sessionId,
-      '--job-host', 'cindy',
-    ], params.workdir, undefined, 10000, params.sessionId);
     reply(request.id, {
       ok: true,
       ...(projectionForContext(result.output) ? { projection: projectionForContext(result.output) } : {}),
-      ...(Array.isArray(reconciliation.output?.jobs) ? { knowledgeJobs: reconciliation.output.jobs } : {}),
     });
     return;
   }
@@ -1228,42 +1201,11 @@ rpcInput.on('line', async (line) => {
       } else {
         const mapped = sessionRequest(operation, operationArgs, params.workdir);
         // Collector registration belongs to capture, not session recovery.
-        const collectorRegistration = operation === 'knowledge.claim' ? await registerCindyCollector(params) : null;
-        const session = await ensureSession(params.sessionId, params.workdir, ["knowledge.done", "knowledge.done.receipt", "knowledge.claim.receipt"].includes(operation));
+        const collectorRegistration = operation === 'knowledge.materials' ? await registerCindyCollector(params) : null;
+        const session = await ensureSession(params.sessionId, params.workdir, ["knowledge.materials", "knowledge.done", "knowledge.done.receipt", "knowledge.claim.receipt"].includes(operation));
         const command = session.request(mapped);
         const ordinal = session.requestsStarted;
-        let response;
-        try { response = await command; }
-        catch (error) {
-          if (!['knowledge.claim', 'knowledge.done'].includes(operation) || error?.outcome !== 'unknown') throw error;
-          releaseSession(session.workdir + '\0' + session.sessionId, session, 'knowledge-unknown');
-          const original = mapped.input;
-          let receipt;
-          try {
-            const recovery = await ensureSession(params.sessionId, params.workdir, true);
-            receipt = await recovery.request(operation === 'knowledge.claim'
-              ? { operation: 'knowledge.claim.receipt', input: { finalizeId: original.finalizeId } }
-              : { operation: 'knowledge.done.receipt', input: {
-                  finalizeId: original.finalizeId, expectedStatus: original.status,
-                  expectedResult: original.status === 'succeeded' ? original.result : original.error,
-                  ...(original.claimToken !== undefined ? { claimToken: original.claimToken } : {}),
-                } });
-            if (receipt.ok === false) { const detail = serializeFailure(receipt.error ?? receipt, { fallbackCode: "KNOWLEDGE_RECEIPT_FAILED", operation: operation + ".receipt", origin: "cindy" }); throw Object.assign(new Error(detail.message), detail); }
-          } catch (diagnostic) {
-            error.diagnostics = [...(Array.isArray(error.diagnostics) ? error.diagnostics : []), serializeFailure(diagnostic, {
-              fallbackCode: 'KNOWLEDGE_RECEIPT_FAILED', origin: 'cindy', operation: operation + '.receipt', fallbackOutcome: 'unknown' })].slice(0, 3);
-            throw error;
-          }
-          if (operation === 'knowledge.claim') {
-            if (receipt.output?.claimed !== true) throw error;
-            response = { ok: true, output: { ...receipt.output, command: 'knowledge.claim', claimRecovered: true } };
-          } else {
-            if (receipt.output?.terminal !== true || receipt.output?.matches !== true) throw error;
-            response = { ok: true, output: { command: 'knowledge.done', finalizeId: original.finalizeId,
-              ...(original.status === 'succeeded' ? { completed: true } : { failed: true }),
-              alreadyDone: true, completionRecovered: true, delegateCloseDeferred: true, postCommitEffectsVerified: false } };
-          }
-        }
+        const response = await command;
         if (operation === 'plan.done') { completedSession = session; completedOrdinal = ordinal; }
         output = response.output;
         if (collectorRegistration && !collectorRegistration.ok) {

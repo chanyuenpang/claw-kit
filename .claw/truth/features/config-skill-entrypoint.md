@@ -1,4 +1,4 @@
-# Config skill entrypoint
+﻿# Config skill entrypoint
 
 <!-- state: current -->
 ## Current behavior

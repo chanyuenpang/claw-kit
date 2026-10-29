@@ -2,6 +2,8 @@
 
 ## Context
 
+This decision's capture receipt and claim integration describes the former claimable-job lifecycle. New DSH/Codex/Cindy source-plan handoffs use the source-plan knowledge route and do not require those receipts; explicit legacy jobs retain this contract. See [source-plan handoff ADR](source-plan-knowledge-handoff.md).
+
 `knowledge claim` 曾在 CLI 中分别解释 Codex transcript、DSH `dsh-capture` 和
 Cindy SQLite/stdin handoff，使通用 plan、job、claim 与 canonical report lifecycle
 同各 Host 的私有历史格式和发布节奏耦合。协调迁移已经把这条边界收敛为 adapter-owned

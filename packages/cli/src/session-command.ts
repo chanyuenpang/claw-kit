@@ -56,7 +56,7 @@ export class SessionCommandExecutor {
     catch (error) { throw withExecutionFailure(error, { operation: "command.decode", phase: "prepare", outcome: "known", effect: "none" }); }
     // Search does not mutate focus. Holding the session execution queue across
     // index refresh blocks the next command for the whole embedding run.
-    if (request.operation === "search" || request.operation === "search.index.refresh") {
+    if (request.operation === "search" || request.operation === "search.index.refresh" || request.operation === "knowledge.materials") {
       const canonical = createSessionIdentity(identity.agentSessionId, identity.workdir);
       const context: CommandContext = {
         cwd: canonical.canonicalWorkdir,

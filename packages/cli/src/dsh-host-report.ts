@@ -47,7 +47,7 @@ export function publishDshHostReport(input: {
       const conversation = entry.entryType === "conversation_message";
       if (entry.schemaVersion !== 1 || (!conversation && entry.entryType !== "final_answer")
         || (conversation && ((entry.role !== "user" && entry.role !== "assistant") || typeof entry.messageId !== "string" || !entry.messageId.trim()))
-        || (entry.context !== undefined && (!conversation || entry.context !== "plan_request" || entry.role !== "user"))
+        || (entry.context !== undefined && (!conversation || entry.context !== "plan_request"))
         || typeof entry.turnId !== "string" || typeof entry.message !== "string" || !entry.message.trim()
         || (entry.occurredAt !== undefined && (typeof entry.occurredAt !== "string" || !Number.isFinite(Date.parse(entry.occurredAt))))) {
         throw new Error("DSH_REPORT_CAPTURE_INVALID: unproven final event.");

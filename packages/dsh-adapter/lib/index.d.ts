@@ -1,52 +1,5 @@
 import { type HostAction } from "./host-actions.js";
-import { type NativeStartService } from "./native-start.js";
 export declare const name = "claw-kit";
-export type FinalizerDispatchRecord = {
-    runId: string;
-    settled: boolean;
-};
-type SubagentChildLike = {
-    kind?: string;
-    id?: string;
-    activity?: string;
-    mode?: string;
-    label?: string;
-};
-export type SubagentsLike = NativeStartService & {
-    listChildren?(parentSessionId: string): Promise<SubagentChildLike[]>;
-};
-/** The label every writer child for one finalizeId carries. */
-export declare function finalizerChildLabel(finalizeId: string): string;
-/**
- * Decide whether a writer child for this finalizeId is already live, so the
- * dispatch can be skipped instead of starting a second one.
- *
- * Two sources, cheapest first:
- *  1. the in-process record — a writer child this process started and has
- *     not seen settle. No race, covers repeated dispatches.
- *  2. the durable child catalog — this parent's children, filtered to a
- *     still-running child carrying the finalizeId label. Covers an adapter
- *     process restart, where the in-process map is gone. The label is
- *     durable for one-shot children too (the runtime snapshots a descriptor
- *     for every child it starts), which is why the finalizer can stay
- *     one-shot and still be found.
- *
- * A missing or damaged child catalog cannot prove absence. Defer dispatch
- * instead of spawning a second child after an uncertain native start.
- */
-export declare function resolveFinalizerReuse(input: {
-    finalizeId: string;
-    parentSessionId: string;
-    label: string;
-    subagents?: SubagentsLike;
-    records?: Map<string, FinalizerDispatchRecord>;
-}): Promise<{
-    runId: string;
-    source: "in-process" | "durable";
-} | {
-    deferred: true;
-    reason: string;
-} | undefined>;
 export declare const inject: string[];
 export type DshTodo = {
     content: string;

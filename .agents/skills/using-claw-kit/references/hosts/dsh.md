@@ -42,22 +42,21 @@ a matching adapter update, not manual Team/native choreography.
 
 ## Knowledge closeout
 
-The adapter, not the model, owns native-subagent finalizer dispatch and safe
-role reuse for the default finalization route. Low-cost model/effort values are
-best-effort preferences: the adapter may apply another supported option or the
-Host default and reports the applied/unknown result without blocking on an exact
-match. The adapter owns report capture and worker
-dispatch and returns compact evidence; follow that evidence rather than
-reconstructing collector internals or timing from this skill.
-Do not spawn another finalizer, run its prompt yourself, poll the worker, or
-reconstruct a hidden prompt. After an accepted/automatically owned handoff,
-end the main turn. Report actual failures; do not describe an accepted handoff
-as completed Truth/ADR deposition. Do not replay plan.done to repair dispatch.
+A terminal source plan returns a handoff that the adapter sends to one native
+worker. Dispatch only starts the work; it does not certify materials or own a
+second completion record. Model/effort preferences are best effort and never
+block on optional metadata.
 
-**Current main-agent integration gap:** configuration may allow main-agent,
-but the current `claw_run` contract does not expose knowledge.prepare or
-knowledge.complete. If terminal guidance requests this chain, surface the
-unsupported adapter route and leave closeout visibly incomplete. Do not invent
-these operations, shell-bypass the adapter, change the executor, or use
-the public manual capture skill. A separate runtime fix is required before
-this route can execute finalization.
+The worker receives the source session key and full source-plan path. It calls
+`claw_run knowledge.materials` with `source_session_key` and `source_plan`,
+reads the full plan and available ordinary conversation, and may search for more
+context. It creates the returned non-capturing auxiliary plan, follows its
+knowledge subplan, and closes those ordinary plans with the actual outcome.
+No claim, token, lease, receipt, separate result registration or dual-terminal
+wait is part of this new flow. Read failures are diagnostics for the worker,
+not an admission gate or proof of empty history.
+
+After accepted dispatch, finish the lead response without spawning another
+writer or waiting for its result. Report real dispatch failures; acceptance is
+not proof that documents were updated. Do not replay a terminal mutation to
+repair dispatch. Old finalization jobs are not automatically resumed or rewritten.

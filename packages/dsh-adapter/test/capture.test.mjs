@@ -19,17 +19,28 @@ test("ordinary text whitelist ignores thinking and tool blocks", () => {
 
 test("collects every visible message including penultimate commentary and an open ending turn", () => {
   const rows = extractPlanConversation([
-    user("request", 800, "request"), answer("old", 850, 1),
+    user("request", 800, "request"), answer("pre-plan reply", 850, 1),
     answer("important commentary", 950, 2, [{ type: "tool-call", text: "secret" }]),
     { type: "tool/result", time: 960, data: { message: { content: [{ type: "text", text: "secret" }] } } },
     user("correction", 970, "correction"), user("reminder", 975, "reminder", "system"),
     answer("short last reply", 1000, 3), answer("after plan.done", 1100, 4),
   ], "session", 900, 1100);
   assert.deepEqual(rows.map(r => [r.role, r.message]), [
-    ["user", "request"], ["assistant", "important commentary"], ["user", "correction"], ["assistant", "short last reply"],
+    ["user", "request"], ["assistant", "pre-plan reply"], ["assistant", "important commentary"], ["user", "correction"], ["assistant", "short last reply"],
   ]);
   assert.equal(rows[0].context, "plan_request");
   assert.ok(rows.every(r => r.entryType === "conversation_message"));
+});
+
+test("reads native user messages, excludes injected context and deduplicates inbox copies", () => {
+  const input = user("request", 800, "request");
+  const native = { type: "user/message", time: 820, data: input.data.inserted[0] };
+  const rows = extractPlanConversation([input, answer("pre-plan reply", 810, 1), native,
+    { type: "user/message", time: 950, data: user("context", 950, "context", "runtime-context").data.inserted[0] },
+    { type: "user/message", time: 960, data: user("correction", 960, "correction").data.inserted[0] },
+    { type: "user/message", time: 970, data: { message: user("legacy", 970, "legacy").data.inserted[0] } },
+  ], "session", 900, 1100);
+  assert.deepEqual(rows.map(r => r.message), ["request", "pre-plan reply", "correction", "legacy"]);
 });
 
 test("uses message identity rather than text and keeps legacy explicit final events", () => {

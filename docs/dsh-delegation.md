@@ -20,7 +20,7 @@ The adapter derives report paths, chooses Team/native, locates the correct role,
 
 - DSH owns members, continuations, mailbox acceptance and live actor identity.
 - The adapter owns role dispatch, FIFO admission, delivery/recovery and report registration.
-- Core owns canonical plans, knowledge jobs, claims, frozen materials and terminal results.
+- Core owns canonical plans and ordinary plan results; legacy job APIs are isolated compatibility paths.
 - Shared role skills own the semantic work and permitted output, not backend choreography.
 
 Team selection uses the exact Agent's exposed Team surface only as a route hint. The Host's actual `agentTeams` or `subagents` business method owns authorization and argument validation; exact tool schemas, task/wait helpers, provider catalogs, descriptions and projections are not shadow permission gates. Team remains optional. Exact Lead/member identity and scoped Host rejection remain authoritative.
@@ -37,16 +37,10 @@ Compatibility deliberately excludes soft observations. Long-lived foreground rol
 
 ## Automatic finalizer
 
-Finalizers are never dispatched by the main model. At a parent terminal transition the adapter freezes only proven parent finals in the canonical half-open capture window. Empty proven captures remain valid; unreadable or unbounded material is not fabricated as empty.
-
-A reusable native writer gets one stable role label per actually submitted options recipe (caller observations and unfulfilled preferences are excluded), while the Host mints the durable child session ID. The adapter never derives and reuses a child ID after the Host catalog releases it. Every job still has a full, distinct finalization ID, delegate plan, claim and material set. Core reserves the exact member and permits only one delivery attempt. Positive durable receipt evidence can repair a lost acknowledgement; an unknown outcome cannot justify a second send. Host rejection codes are normalized into bounded structured diagnostics; arbitrary exception text is redacted, but actionable owner failures are not collapsed into a generic code. Legacy one-shot jobs keep their original evidence and native fallback.
-
-A later job waits for both the previous job and its delegate to end. The durable releasedAt proof prevents later delegate-file retention from blocking an already-verified release. The adapter completes matching final bookkeeping when safe and wakes the parent queue without requiring another parent turn. It never closes an unrelated or newer delegate.
-
-The reusable protocol requires a matching CLI/Core dispatch contract with full per-job delegate identity. Unsupported older contracts fail explicitly rather than sharing truncated plan names in one reused session.
+The adapter launches one native worker per source-plan handoff. It retains only dispatch-delivery deduplication, not a claimable job, reusable writer lease, capture admission, or dual-terminal queue. The worker reads the complete source plan and bounded ordinary conversation through `knowledge.materials`, then owns an ordinary non-capturing plan and knowledge subplan. Their actual results and document edits are the completion evidence. Old jobs are not automatically scanned or changed. See [source-plan finalization](<finalizer-execution.md>).
 
 ## Verification and limits
 
-Focused coverage includes actual adapter entry wiring, an assembled-plugin semantic entry, A/B same-member execution without a new parent turn, late A isolation from B, exact claim ownership, capture windows, unknown receipt/no-resend, native continuation/one-shot behavior, report focus guards, and private-store process contention/crash recovery.
+Foreground delegation retains its role/reuse, report-focus and receipt coverage. Finalizer checks cover actual tool wiring, ordinary conversation boundaries, launch-only deduplication, no resend after unknown admission, and material failures that preserve source evidence without blocking dispatch.
 
 These tests use controlled Host services and temporary projects. They do not prove current-profile activation, every provider, destructive toggle/HMR behavior, or every operating system. No live profile toggle or runtime file surgery is a substitute for those checks.

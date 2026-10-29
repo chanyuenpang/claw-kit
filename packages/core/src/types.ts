@@ -141,6 +141,8 @@ export type PlanDocument = {
   configOverride?: TemplateConfigOverride;
   status: PlanStatus;
   completedAt?: string;
+  /** Stable source-material start; legacy plans may omit it. */
+  createdAt?: string;
   updatedAt?: string;
   goal: {
     text: string;

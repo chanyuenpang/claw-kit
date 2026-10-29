@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { ClawError, withExecutionFailure, serializeFailure, safeFailureCode, type SafeFailure, type ClawErrorCode, type ClawExecutionFailure } from "./errors.js";
 import path from "node:path";
 import { readJsonFile, withFileLock, writeJsonFile, writeJsonFileAtomic } from "./io.js";
-import { buildKnowledgeWriterAssignments, buildKnowledgeAssignmentTemplate, type KnowledgeWriterAssignment } from "./knowledge-assignments.js";
+import { isSourceKnowledgeHost, buildKnowledgeWriterAssignments, buildKnowledgeAssignmentTemplate, type KnowledgeWriterAssignment } from "./knowledge-assignments.js";
 import type { PlanTemplateDocument } from "./templates/plans/default.js";
 import { pickKnowledgeWriterFields } from "./effective-config.js";
 import { ensureInsideDir } from "./paths.js";
@@ -342,6 +342,7 @@ export function tryRegisterKnowledgePlan(input: {
   writer?: KnowledgeWriterConfig;
   host?: KnowledgeFinalizationHost;
 }): KnowledgeSidecarResult {
+  if (isSourceKnowledgeHost(input.host)) return { ok: true };
   if (input.knowledgeCapture === false || !input.host || input.host === "standard") {
     return { ok: true };
   }
@@ -390,6 +391,12 @@ export function tryEndKnowledgePlan(input: {
   writer?: KnowledgeWriterConfig;
   host?: KnowledgeFinalizationHost;
 }): KnowledgePlanEndResult {
+  if (isSourceKnowledgeHost(input.host)) {
+    // Ordinary plans own completion. This identifier is only a dispatch dedup key.
+    return input.knowledgeCapture !== false && input.sessionId
+      ? { ok: true, finalizeId: deriveKnowledgeFinalizeId({ sessionId: input.sessionId, planPath: input.endedPlanPath, endedAt: input.endedAt }) }
+      : { ok: true };
+  }
   if (input.knowledgeCapture === false || !input.host || input.host === "standard") {
     return { ok: true };
   }
@@ -1215,8 +1222,10 @@ export function reconcileKnowledgeFinalizationJobs(
   let checked = 0;
   let failed = 0;
   for (const jobPath of listKnowledgeFinalizationJobs(project)) {
-    checked += 1;
     try {
+      // Old native-host jobs are diagnostic history, never automatic recovery work.
+      if (isSourceKnowledgeHost(readKnowledgeFinalizationJob(jobPath).host)) continue;
+      checked += 1;
       reconcileKnowledgeFinalizationJob(jobPath);
     } catch {
       // Maintenance is fail-open; an unreadable job remains available for diagnosis.

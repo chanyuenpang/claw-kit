@@ -36,52 +36,27 @@ lifecycle.
 
 ## Knowledge finalizer dispatch
 
-Cindy
-uses one knowledge-closeout execution model: a persistent, UI-visible Orca
-Worker. When a terminal plan mutation returns a valid `knowledgeDispatch`,
-dispatch that Worker directly.
-That `knowledgeDispatch` is the claw-kit Orca authorization for the exact
-`knowledge_finalizer` lifecycle below; no separate user confirmation is
-required. It does not authorize any other Worker. The dispatch is always
-executed by the Orca Agent in Cindy. The job already exists durably when the
-terminal mutation returns; neither dispatch nor report capture waits for a Stop
-hook.
+A terminal plan returns a source-plan `knowledgeDispatch` for one fresh,
+UI-visible Orca `knowledge_finalizer` Worker. It is authorization for that
+handoff, not another job to claim. Discover the actual Orca tools when needed;
+if there is no team, use `start_team`, then `create_worker` with the complete
+prompt as `initial_task`, agent `codex`, and a label based on `dispatchId`.
+Use supported model/effort fields as preferences, not catalog-based admission
+gates. Report actual owner failures; do not resend an accepted or uncertain
+creation or send the handoff to multiple workers.
 
-**Orca discovery is required.** When `knowledgeDispatch` is present, dispatch
-it through Cindy Orca. If `cindy_orca` is absent from a static tool list,
-discover `mcp__cindy_orca__*` from `ALL_TOOLS`, then call
-`get_workspace_info`. Only an actual Orca call failure makes dispatch
-unavailable; never substitute shell, background work, or an unsupported claim.
+The Worker calls Ghost `knowledge.materials` with `sourceSessionKey` and
+`sourcePlan`. This reads the complete plan and its ordinary conversation and
+provides an ordinary non-capturing auxiliary plan and knowledge subplan template.
+The Worker judges that evidence, may search for context, and finishes through
+those ordinary plans. No claim, token, receipt, lease, or separate result
+registration is required. A read failure is a diagnostic, not fabricated empty
+history or a new completion gate.
 
-1. Do not reuse a `knowledge_finalizer` Worker. Each `finalizeId` owns one
-   isolated Worker so a stale claim can never receive a later job.
-2. If no active workflow exists, call `cindy_orca.start_team`, then create the
-   Worker with `cindy_orca.create_worker`, role `knowledge_finalizer`, label
-   `knowledge_finalizer_<first 12 chars of finalizeId>`, agent `codex`, and
-   the complete `knowledgeDispatch.prompt` as `initial_task`.
-3. If the workflow exists, create that same uniquely labelled Worker. Do not
-   send a later dispatch to an existing Worker.
-4. Map supplied `model` and `reasoningEffort` to Worker creation only when the
-   Host advertises them as valid for the Codex Worker. Do not replace an
-   unsupported configured model silently.
-5. Treat only a newly created or queued Worker as accepted asynchronous
-   dispatch. An unavailable, failed, or expired claim is terminal for that
-   Worker: end or archive it rather than retrying or reusing it. Immediately finish the main response after that acknowledgement.
-   Do not wait for the Worker. Do not poll, read the Worker output, query its
-   status, or describe the finalization as an unfinished foreground step. The Worker uses the
-   `knowledge.claim` operation in the returned prompt to capture task
-   conclusions and claim the existing job atomically.
-
-**Lead turn boundary:** an accepted Orca Writer dispatch is the terminal action
-of the current Lead turn. Return the normal user-facing completion response
-immediately after the fresh `create_worker` acknowledgement. The
-Writer's report belongs to its own asynchronous turn and must not delay,
-resume, or extend this Lead turn.
-
-Never execute the returned finalizer prompt in the Lead, send it through
-`cindy.agent.errand`, or let a did-turn-end hook create or claim a Cindy
-knowledge job. Legacy Cindy background jobs remain visible for diagnosis but
-are not launched.
+After Worker creation is accepted, finish the Lead's normal response without
+waiting or polling. Acceptance is not proof of document completion. Do not run
+the finalizer in the Lead, through an errand, or from a turn-end hook. Old jobs
+are not automatically scanned, resumed or rewritten.
 
 ---
 

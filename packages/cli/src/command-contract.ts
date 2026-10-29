@@ -56,6 +56,7 @@ const checks = {
   "task.done": object({ tasks: list(object({ id, choiceId: text }, ["id"])) }, ["tasks"]),
   "search": object({ query: text, limit: id }, ["query"]),
   "search.index.refresh": object({}),
+  "knowledge.materials": object({ sourceSessionKey: text, sourcePlan: text }, ["sourceSessionKey", "sourcePlan"]),
   "knowledge.claim": object({ finalizeId }, ["finalizeId"]),
   // Internal transport reconciliation only; no model-facing argument mapping.
   "knowledge.claim.receipt": object({ finalizeId }, ["finalizeId"]),

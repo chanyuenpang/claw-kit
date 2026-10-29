@@ -80,6 +80,7 @@ export type ClawSessionCommand =
   | { operation: "task.remove"; input: { taskId?: number; tasks?: Array<{ id: number }> } }
   | { operation: "search"; input: { query: string; limit?: number } }
   | { operation: "search.index.refresh"; input: Record<string, never> }
+  | { operation: "knowledge.materials"; input: { sourceSessionKey: string; sourcePlan: string } }
   | { operation: "knowledge.claim"; input: { finalizeId: string } }
   /** Internal read-only receipt reconciliation, not a model operation. */
   | { operation: "knowledge.claim.receipt"; input: { finalizeId: string } }
@@ -142,6 +143,13 @@ export type ClawPostCommitEffectV1 = {
   endedAt?: string;
 };
 
+export type ClawSourceKnowledgeDispatchV2 = {
+  schemaVersion: 2; kind: "knowledge.finalize"; host: "codex" | "cindy" | "dsh";
+  dispatchId: string; sourceSessionKey: string; sourcePlan: string; sourcePlanTitle: string;
+  projectRoot: string; preferReuse: false; prompt: string; leadInstruction?: string;
+  model?: string; reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
+};
+export type ClawKnowledgeDispatch = ClawSourceKnowledgeDispatchV2 | ClawKnowledgeDispatchV1;
 export type ClawKnowledgeDispatchV1 = {
   schemaVersion: 1;
   /** Additive fields; legacy envelopes may omit them. New dispatches always carry the host. */
@@ -161,7 +169,7 @@ export type ClawSessionCommandEnvelope<T extends ClawSessionCommand = ClawSessio
   output: ClawSessionCommandResult<T>;
   hostActions?: ClawHostActionV1[];
   postCommitEffects?: ClawPostCommitEffectV1[];
-  knowledgeDispatch?: ClawKnowledgeDispatchV1;
+  knowledgeDispatch?: ClawKnowledgeDispatch;
 };
 
 export type SessionProtocolRequest =

@@ -1,9 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { KnowledgeFinalizationJob } from "./knowledge-sidecar.js";
 import type { PlanTemplateDocument } from "./templates/plans/default.js";
 import type { KnowledgeWriterConfig } from "./types.js";
+
+export type KnowledgeWriterMaterials = {
+  planPath: string; reportPath: string; writer?: KnowledgeWriterConfig | null;
+  docUpdate?: { externalDocPaths: string[] };
+  /** Legacy callers may supply a job id; writing knowledge does not depend on it. */
+  finalizeId?: string;
+};
 
 export type KnowledgeWriterAssignment = {
   index: number;
@@ -28,6 +34,27 @@ export type KnowledgeFinalizationTask = {
   projectRoot: string;
   writer?: KnowledgeWriterConfig | null;
 };
+
+/** A source-plan handoff, not a claimable job or a second completion record. */
+export type SourceKnowledgeTask = {
+  schemaVersion: 2;
+  kind: "knowledge.finalize";
+  host: "codex" | "dsh" | "cindy";
+  dispatchId: string;
+  sourceSessionKey: string;
+  sourcePlan: string;
+  sourcePlanTitle: string;
+  projectRoot: string;
+  writer?: KnowledgeWriterConfig;
+};
+export type SourceKnowledgeDispatch = SourceKnowledgeTask & {
+  preferReuse: false; prompt: string; leadInstruction?: string;
+  model?: string; reasoningEffort?: KnowledgeWriterConfig["reasoningEffort"];
+};
+export type KnowledgeDispatch = KnowledgeDelegateDispatch | SourceKnowledgeDispatch;
+export function isSourceKnowledgeHost(host: unknown): host is SourceKnowledgeTask["host"] {
+  return host === "codex" || host === "cindy" || host === "dsh";
+}
 
 export type KnowledgeDelegateDispatch = KnowledgeFinalizationTask & {
   preferReuse: boolean;
@@ -64,7 +91,7 @@ export function dshKnowledgeDelegateTemplatePath(): string {
 }
 
 export function buildKnowledgeWriterAssignments(
-  job: Pick<KnowledgeFinalizationJob, "finalizeId" | "planPath" | "reportPath" | "writer" | "docUpdate">,
+  job: KnowledgeWriterMaterials,
 ): KnowledgeWriterAssignment[] {
   const configured = job.writer?.externalSkills?.map((skill) => skill.trim()).filter(Boolean) ?? [];
   const assignments: KnowledgeWriterAssignment[] = configured.length === 0
@@ -131,7 +158,8 @@ export function buildDirectKnowledgeAssignments(input: {
 
 export function buildKnowledgeAssignmentTemplate(input: {
   assignments: KnowledgeWriterAssignment[];
-  finalizeId: string;
+  templateId?: string;
+  finalizeId?: string;
   version: string;
 }): PlanTemplateDocument {
   if (
@@ -141,15 +169,15 @@ export function buildKnowledgeAssignmentTemplate(input: {
     return buildBuiltinKnowledgeTemplate(input);
   }
   return {
-    id: `knowledge-assignments-${input.finalizeId.slice(0, 12)}`,
+    id: `knowledge-assignments-${(input.templateId ?? input.finalizeId ?? "source").slice(0, 12)}`,
     version: input.version,
     title: "knowledge-writer assignments",
     status: "process.active",
     goal: {
-      text: "Execute every claimed knowledge-writer assignment sequentially.",
+      text: "Execute the configured knowledge-writer assignments sequentially.",
     },
     requirements: {
-      summary: "Execute the immutable assignments returned by knowledge claim without interaction or delegation.",
+      summary: "Maintain knowledge in the configured assignment order.",
       openQuestions: [],
       acceptanceCriteria: [
         "Assignments run sequentially in their configured order.",
@@ -182,7 +210,8 @@ export function buildKnowledgeAssignmentTemplate(input: {
 
 function buildBuiltinKnowledgeTemplate(input: {
   assignments: KnowledgeWriterAssignment[];
-  finalizeId: string;
+  templateId?: string;
+  finalizeId?: string;
   version: string;
 }): PlanTemplateDocument {
   const contractRoot = path.join(
@@ -194,7 +223,7 @@ function buildBuiltinKnowledgeTemplate(input: {
     fs.readFileSync(path.join(contractRoot, "TEMPLATE.json"), "utf-8"),
   ) as PlanTemplateDocument;
   const template = structuredClone(source);
-  template.id = `knowledge-assignments-${input.finalizeId.slice(0, 12)}`;
+  template.id = `knowledge-assignments-${(input.templateId ?? input.finalizeId ?? "source").slice(0, 12)}`;
   template.version = input.version;
   template.title = "built-in knowledge governance";
   template.status = "process.active";
@@ -222,7 +251,7 @@ function buildBuiltinKnowledgeTemplate(input: {
 }
 
 function buildBuiltinKnowledgePrompt(
-  job: Pick<KnowledgeFinalizationJob, "finalizeId" | "planPath" | "reportPath" | "writer">,
+  job: KnowledgeWriterMaterials,
 ): string {
   return [
     "Execute the built-in knowledge-governance contract supplied by claw-kit.",
@@ -266,7 +295,7 @@ function buildDirectDocUpdaterPrompt(externalDocPaths: string[]): string {
 }
 
 function buildExternalSkillPrompt(
-  job: Pick<KnowledgeFinalizationJob, "finalizeId" | "planPath" | "reportPath">,
+  job: KnowledgeWriterMaterials,
   skill: string,
 ): string {
   return [
@@ -278,7 +307,7 @@ function buildExternalSkillPrompt(
 }
 
 function buildDocUpdaterPrompt(
-  job: Pick<KnowledgeFinalizationJob, "finalizeId" | "planPath" | "reportPath" | "docUpdate">,
+  job: KnowledgeWriterMaterials,
 ): string {
   const skillPath = path.join(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -307,7 +336,7 @@ function canonicalKnowledgePrompt(): string {
 }
 
 function commonMaterialPrompt(
-  job: Pick<KnowledgeFinalizationJob, "finalizeId" | "planPath" | "reportPath">,
+  job: KnowledgeWriterMaterials,
 ): string {
   return [
     "Use task status to distinguish completed work from pending or blocked intent; never present requirements or intentions as completed results.",
@@ -315,7 +344,6 @@ function commonMaterialPrompt(
     "Materials:",
     `- ${job.planPath}`,
     `- ${job.reportPath}`,
-    `Finalization id: ${job.finalizeId}`,
     "Interpret inputs by content regardless of filename or schema. Treat them as read-only and transient: do not modify, reference, or link to them in governed documentation. Do not delegate, reimplement completed work, or rerun tests.",
   ].join("\n");
 }

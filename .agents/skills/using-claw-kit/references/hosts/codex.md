@@ -19,8 +19,8 @@ through the bridge below; a template-owning skill supplies its template instead.
 For context recovery and every claw workflow or knowledge operation, call the function below in
 code mode and change only `argv`, `workdir`, and `timeout_ms`; supply `pluginRoot` from the actual loaded plugin directory (the ancestor containing `.codex-plugin/plugin.json`). `argv` is exactly
 `["context"]` for recovery, or starts with `plan`, `task`, or `subplan` for
-workflow operations, or `knowledge` with `claim`, `claim-receipt`, `done` or
-`done-receipt`. It excludes the `claw` executable and `--host`, and
+workflow operations, or `knowledge materials --source-session-key … --source-plan …`
+for source evidence and writer templates. It excludes the `claw` executable and `--host`, and
 keeps every user value as a separate array item. The cached CLI driver validates
 results, consumes native host actions exactly once, and returns only
 stage-relevant plan fields and the complete knowledge business result.
@@ -32,7 +32,7 @@ not accept them. This does not permit a shell fallback for plan mutations.
 
 ```javascript
 async function runClawPlanMutation({ argv, workdir, pluginRoot, timeout_ms = 30000 }) {
-  const cacheKey = "claw-kit:codex-driver:v27:s1";
+  const cacheKey = "claw-kit:codex-driver:v28:s1";
   const pluginVersion = "0.2.67.0";
   const fetchEnvelope = async () => {
     const raw = typeof tools.shell_command === "function" ? await tools.shell_command({ command: "claw codex driver", workdir, timeout_ms })
@@ -57,11 +57,22 @@ async function runClawPlanMutation({ argv, workdir, pluginRoot, timeout_ms = 300
 ```
 
 ## Knowledge subagent dispatch
-- **Terminal dispatch gate (Codex):** A valid `knowledgeDispatch` is the highest-priority closeout obligation in the claw-kit workflow. Complete this handoff through the designated knowledge finalizer before the final reply, other work, or plan closeout. Do not skip the handoff because it was easy to miss, the work appears to contain no knowledge, a collaboration tool is not visible, or you believe you lack permission. The finalizer decides whether the job produces a knowledge update.
-- When a terminal plan mutation returns a valid `knowledgeDispatch` for Codex, launch one isolated worker for that exact `finalizeId`. Do not reuse a worker that may still hold an earlier claim: call `spawn_agent` with the complete unchanged prompt, `fork_turns: "none"`, task name `knowledge_finalizer_<first 12 chars of finalizeId>`, and any supplied `model` and `reasoningEffort` mapped to native fields; never load a user-facing delegate skill. A failed, expired, or unavailable claim is terminal for that worker and must not be sent to another job.
-- The dispatched job already exists. Do not wait for the new writer; immediately end the main turn after the accepted handoff. On Codex, `knowledge claim` collects the existing parent-turn report. The bridge cannot call collaboration tools.
+
+When a terminal plan returns `knowledgeDispatch`, launch one isolated native
+worker with its unchanged prompt, `fork_turns: "none"`, and a name based on
+`dispatchId`. Apply supplied model/effort preferences through supported native
+fields. After accepted handoff, finish the lead response without waiting.
+
+The worker calls `knowledge materials` through this driver using the supplied
+source session key and complete source-plan path. It reads the full plan and
+ordinary conversation, searches as useful, and creates the returned auxiliary
+plan with knowledge capture disabled. Its knowledge subplan and ordinary plan
+completion are the closeout; there is no claim/token/receipt or separate done
+registration. A material-read failure is a visible diagnostic, not an empty
+conversation or permission to fabricate an outcome.
+
 ## Hard boundaries
-- Run every supported workflow and knowledge operation through the code-mode bridge without splitting host calls, reconstructing `hostActions` or `goalTool`, or repeating canonical transitions as compensation. Goal/effect failures remain visible but never authorize replaying the canonical mutation. After an unknown claim/done response, use the matching claim-receipt/done-receipt through this same bridge; never resend the mutation.
+- Run every supported workflow and knowledge operation through the code-mode bridge without splitting host calls, reconstructing `hostActions` or `goalTool`, or repeating canonical transitions as compensation. Goal/effect failures remain visible but never authorize replaying the canonical mutation. Preserve startup/transport diagnostics and never resend an outcome-unknown mutation.
 - Codex has no direct-call fallback: every supported plan mutation goes through the bundled code-mode consumer.
 - Goal-state inspection belongs only to the fixed driver or bundled consumer program; the agent must never call `get_goal` separately.
 - Edit canonical plan state only through claw commands supplied or permitted by returned guidance.
@@ -69,4 +80,4 @@ async function runClawPlanMutation({ argv, workdir, pluginRoot, timeout_ms = 300
 - Keep claw harness mechanics out of normal thread replies unless the user asks about them or they are necessary to explain a blocker or result.
 - Keep claw-generated metadata and host prompts in English while preserving user-supplied project content in its original language.
 
-Knowledge finalization uses only the native isolated worker. Claim captures the parent report through the adapter-owned collector. Do not claim asynchronous knowledge deposition completed merely because the foreground plan closed.
+Do not describe asynchronous knowledge deposition as completed merely because the foreground plan closed or its handoff was accepted. Old knowledge jobs are compatibility data, not a recovery queue for new workers.

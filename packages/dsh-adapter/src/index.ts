@@ -16,109 +16,13 @@ import { registerBundledSkills } from "./skills.js";
 import { routeCommand, runCommandBaseline, resolveCommandEntry } from "./command-route.js";
 import { handleProjectConfigRpc, type WorkspaceRegistry } from "./project-config-rpc.js";
 import { resolveDshDelegationCapability } from "./team-capability.js";
-import { FinalizerRoleDispatcher, type FinalizerAgent } from "./finalizer-roles.js";
+import { createSourceFinalizerDispatcher, type SourceDispatch } from "./source-finalizer.js";
 import { RoleDelegation, type DelegationActor } from "./delegation.js";
 import { selectDshRoleModel } from "./model-selection.js";
 import { mountConnectionRpcChannels } from "./connection-rpc.js";
 import { startNativeActivation, type NativeStartService } from "./native-start.js";
 
 export const name = "claw-kit";
-
-// ---------------------------------------------------------------------------
-// Finalizer dispatch record (finalizeId -> live writer child)
-//
-// The adapter -- never the model -- owns "at most one unsettled writer child
-// per finalizeId". This is a COST invariant, not a write mutex: a second child
-// is harmless because the durable job's claim gate refuses it (the writer
-// template stops when `claimed` is false). What this record removes is the
-// duplicate spawn plus its claim call, and it closes the only path that could
-// still produce a second writer: the model retrying a failed dispatch by hand.
-//
-// The key is the finalizeId alone; it already embeds the parent session id
-// (CLI/core owns its derivation), so a process-wide map stays session-scoped.
-// ---------------------------------------------------------------------------
-export type FinalizerDispatchRecord = { runId: string; settled: boolean };
-const finalizerDispatches = new Map<string, FinalizerDispatchRecord>();
-
-type SubagentChildLike = {
-  kind?: string;
-  id?: string;
-  activity?: string;
-  mode?: string;
-  label?: string;
-};
-
-export type SubagentsLike = NativeStartService & {
-  listChildren?(parentSessionId: string): Promise<SubagentChildLike[]>;
-};
-
-/** The label every writer child for one finalizeId carries. */
-export function finalizerChildLabel(finalizeId: string): string {
-  // Legacy job labels and reusable-session delegate titles both retain full ids.
-  return `knowledge-finalizer-${finalizeId}`;
-}
-
-/**
- * Decide whether a writer child for this finalizeId is already live, so the
- * dispatch can be skipped instead of starting a second one.
- *
- * Two sources, cheapest first:
- *  1. the in-process record — a writer child this process started and has
- *     not seen settle. No race, covers repeated dispatches.
- *  2. the durable child catalog — this parent's children, filtered to a
- *     still-running child carrying the finalizeId label. Covers an adapter
- *     process restart, where the in-process map is gone. The label is
- *     durable for one-shot children too (the runtime snapshots a descriptor
- *     for every child it starts), which is why the finalizer can stay
- *     one-shot and still be found.
- *
- * A missing or damaged child catalog cannot prove absence. Defer dispatch
- * instead of spawning a second child after an uncertain native start.
- */
-export async function resolveFinalizerReuse(input: {
-  finalizeId: string;
-  parentSessionId: string;
-  label: string;
-  subagents?: SubagentsLike;
-  records?: Map<string, FinalizerDispatchRecord>;
-}): Promise<{ runId: string; source: "in-process" | "durable" } | { deferred: true; reason: string } | undefined> {
-  const records = input.records ?? finalizerDispatches;
-  const record = records.get(input.finalizeId);
-  if (record !== undefined && !record.settled) {
-    return { runId: record.runId, source: "in-process" };
-  }
-  const subagents = input.subagents;
-  if (subagents === undefined || typeof subagents.listChildren !== "function") {
-    return { deferred: true, reason: "native child catalog unavailable" };
-  }
-  try {
-    const children = await subagents.listChildren(input.parentSessionId);
-    if (!Array.isArray(children)) return { deferred: true, reason: "native child catalog incomplete" };
-    const legacyLabel = `knowledge-finalizer-${input.finalizeId.slice(0, 12)}`;
-    for (const child of children) {
-      // Current catalogs have neither kind nor activity. Positive durable
-      // identity still prevents replay; missing activity never proves settlement.
-      if (child && (child.kind === undefined || child.kind === "child")
-        && (child.activity === undefined || child.activity === "running")
-        && (child.label === input.label || child.label === legacyLabel)
-        && typeof child.id === "string") return { runId: child.id, source: "durable" };
-    }
-    // Without positive target evidence, a diagnostic may hide the exact legacy
-    // one-shot child; do not start a duplicate. It does not override a match.
-    return children.some((child) => child?.kind === "diagnostic")
-      ? { deferred: true, reason: "native child catalog incomplete" } : undefined;
-  } catch {
-    return { deferred: true, reason: "native child catalog lookup failed" };
-  }
-}
-
-const FINALIZER_MANUAL_RETRY_GUIDANCE =
-  "Do not run or retry the knowledge finalizer manually. The durable queued job is reconciled by the adapter on the next system entry; an uncertain native child creation must be checked before another launch.";
-
-function collectorVersion(): string {
-  const packageJsonPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json");
-  return String((JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as { version?: unknown }).version ?? "unknown");
-}
 
 // The caller's workspace cwd. DSH's Session public surface does not expose a
 // cwd (agent.session.cwd / meta.cwd are absent), and sandboxPolicy.workspaceRoot
@@ -398,7 +302,7 @@ export function apply(ctx: unknown): void {
       const registry = c.get("agents") as { get?(id: string): unknown } | undefined;
       const parent = registry?.get?.(parentId) as DelegationActor | undefined;
       if (!parent || parent.id !== parentId) throw new Error("DELEGATE_PARENT_UNAVAILABLE");
-      const native = c.get("subagents") as SubagentsLike | undefined;
+      const native = c.get("subagents") as { listChildren?(id: string): Promise<Array<{ kind?: string; id?: string }>> } | undefined;
       const children = await native?.listChildren?.(parentId);
       if (!Array.isArray(children)
         || children.some(child => child.kind === "diagnostic" && child.id === actor.id)) throw new Error("DELEGATE_PARENT_UNAVAILABLE");
@@ -443,11 +347,9 @@ export function apply(ctx: unknown): void {
     },
   });
 
-  type PendingDispatch = { finalizeId?: string; prompt?: string;
-    model?: string | null; reasoningEffort?: string | null; preferReuse?: boolean; execution?: Record<string, unknown>;
-    startedAt?: string; endedAt?: string; queuedAt?: string; captureStatus?: "pending" | "captured" };
   async function readParentSessionEvents(parentId: string, code: string, missingCode = code): Promise<unknown[]> {
     let serviceObserved = false;
+    let lastError: unknown;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const query = c.get("sessionQuery") as { readSession(id: string): Promise<{ events?: unknown[] }> } | undefined;
@@ -455,340 +357,17 @@ export function apply(ctx: unknown): void {
         serviceObserved = true;
         const snapshot = await query.readSession(parentId);
         if (Array.isArray(snapshot?.events)) return snapshot.events;
-      } catch { /* one read-only retry; never retry a report commit */ }
+      } catch (error) { lastError = error; } // one read-only retry, never a report commit
     }
-    throw Object.assign(new Error(serviceObserved ? code : missingCode), { code: serviceObserved ? code : missingCode, operation: "parent.history.read", phase: "capture", outcome: "known", effect: "none" });
+    const failure = serializeFailure(lastError, { fallbackCode: serviceObserved ? code : missingCode, operation: "parent.history.read", origin: "dsh", fallbackOutcome: "known" });
+    throw Object.assign(new Error(failure.message), failure, { phase: failure.phase ?? "capture", outcome: failure.outcome ?? "known", effect: failure.effect ?? "none" });
   }
-  const reusableFinalizers = new FinalizerRoleDispatcher({
-    getService: (name) => c.get(name), signal: finalizerAbort.signal,
-    command: async (operation, actorId, workdir, argv) => {
-      const response = await runOneOff(["internal-dsh-finalizer-" + operation, ...argv, "--host", "dsh"], workdir, actorId);
-      const result = parseProtocol(response.text);
-      if (!result || result.ok !== true) {
-        const failure = serializeFailure(result?.error ?? result, { fallbackCode: "DSH_EXECUTION_LEDGER_UNAVAILABLE", operation: "finalizer." + operation, origin: "cli", fallbackOutcome: "unknown" });
-        throw Object.assign(new Error(failure.message), failure);
-      }
-      return result;
-    },
-    readParentEvents: (parentId) => readParentSessionEvents(parentId, "DSH_ROLE_HISTORY_UNAVAILABLE"),
+  const dispatchSource = createSourceFinalizerDispatcher({
+    getService: name => c.get(name),
+    selectModel: (agent, task) => selectDshRoleModel({ agent, role: "finalizer", supportsOptions: true,
+      getService: name => name === "sessionQuery" ? undefined : c.get(name),
+      hints: { model: task.model, reasoningEffort: task.reasoningEffort } }),
   });
-  const dispatchFlights = new Map<string, Promise<Record<string, JsonValue>>>();
-  const completedSweeps = new Set<string>();
-  const pendingSweeps = new Map<string, Promise<void>>();
-  async function readPendingDispatches(parentId: string, workdir: string): Promise<PendingDispatch[]> {
-    const { text } = await runOneOff(["internal-knowledge-pending"], workdir, parentId);
-    const protocol = parseProtocol(text);
-    if (protocol?.ok !== true || !Array.isArray(protocol.dispatches)) {
-      throw new Error("Trusted queued-finalizer inspection returned no dispatch inventory.");
-    }
-    return protocol.dispatches as PendingDispatch[];
-  }
-  async function captureDshParentReport(parentId: string, workdir: string, dispatch: PendingDispatch): Promise<void> {
-    if (dispatch.captureStatus === "captured") return;
-    const startedAt = dispatch.startedAt ? Date.parse(dispatch.startedAt) : Number.NaN;
-    if (!Number.isFinite(startedAt)) throw Object.assign(new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE"), { code: "DSH_REPORT_BOUNDARY_UNAVAILABLE" });
-    const eventsSnapshot = await readParentSessionEvents(parentId, "DSH_REPORT_HISTORY_UNAVAILABLE", "DSH_REPORT_HOST_UNAVAILABLE");
-    const endedAt = dispatch.endedAt ? Date.parse(dispatch.endedAt) : undefined;
-    if (endedAt !== undefined && (!Number.isFinite(endedAt) || endedAt < startedAt)) throw Object.assign(new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE"), { code: "DSH_REPORT_BOUNDARY_UNAVAILABLE" });
-    const events = extractPlanConversation(eventsSnapshot as EventLike[], parentId, startedAt, endedAt);
-    const payload = JSON.stringify({ events });
-    const { text } = await runOneOff(["internal-dsh-host-report-capture",
-      "--finalize-id", String(dispatch.finalizeId), "--collector-version", collectorVersion()],
-    workdir, parentId, payload);
-    const result = parseProtocol(text);
-    if (result?.ok !== true || result.captured !== true) throw Object.assign(new Error("DSH_REPORT_COMMIT_FAILED"), { code: "DSH_REPORT_COMMIT_FAILED" });
-  }
-
-  async function recordDshIssue(parentId: string, workdir: string, finalizeId: string,
-    phase: "capture" | "dispatch" | "writer", code: string, diagnostic?: unknown): Promise<Record<string, JsonValue> | undefined> {
-    const supplied = diagnostic && typeof diagnostic === "object" ? (diagnostic as { correlationId?: unknown }).correlationId : undefined;
-    const correlationId = typeof supplied === "string" && /^[a-zA-Z0-9_-]{1,96}$/.test(supplied) ? supplied : finalizeId.slice(0, 12) + "_" + Date.now().toString(36);
-    const failure = diagnostic !== undefined ? serializeFailure(diagnostic, { fallbackCode: code, resource: finalizeId, correlationId }) : undefined;
-    try {
-      const { text } = await runOneOff(["internal-dsh-finalizer-issue", "--finalize-id", finalizeId,
-        "--phase", phase, "--code", code, "--correlation-id", correlationId, ...(failure ? ["--failure", JSON.stringify(failure)] : [])], workdir, parentId);
-      if (parseProtocol(text)?.ok !== true) throw new Error("status not acknowledged");
-    } catch (error) {
-      const secondary = serializeFailure(error, { fallbackCode: "FINALIZER_DIAGNOSTIC_STORE_FAILED", operation: "finalizer.diagnostic.persist", origin: "cli", resource: finalizeId, correlationId });
-      console.warn("[claw-kit] finalizer diagnostic storage unavailable:", JSON.stringify(secondary));
-      return JSON.parse(JSON.stringify(secondary)) as Record<string, JsonValue>;
-    }
-  }
-
-  async function readDshAlerts(parentId: string, workdir: string): Promise<{ alerts: JsonValue[]; error?: string }> {
-    try {
-      const { text } = await runOneOff(["internal-dsh-finalizer-alerts"], workdir, parentId);
-      const result = parseProtocol(text);
-      if (result?.ok !== true || !Array.isArray(result.alerts)) throw new Error("invalid alert inventory");
-      return { alerts: result.alerts as JsonValue[] };
-    } catch {
-      return { alerts: [], error: "FINALIZER_ALERTS_UNAVAILABLE" };
-    }
-  }
-
-  function safeCaptureFailureCode(error: unknown): string {
-    return serializeFailure(error, { fallbackCode: "DSH_REPORT_HOST_FAILURE" }).code;
-  }
-
-  async function dispatchOne(agent: { id: string }, workdir: string, dispatch: PendingDispatch): Promise<Record<string, JsonValue>> {
-    const finalizeId = String(dispatch.finalizeId ?? "");
-    if (!/^[a-f0-9]{64}$/i.test(finalizeId) || !dispatch.prompt) {
-      return { ok: false, retryable: false, reason: "Invalid canonical finalizer dispatch." };
-    }
-    const key = sessionKey(agent.id, workdir) + "\0" + finalizeId.toLowerCase();
-    const inFlight = dispatchFlights.get(key);
-    if (inFlight) return inFlight;
-    const run = (async (): Promise<Record<string, JsonValue>> => {
-      const deferred = async (phase: "capture" | "dispatch", code: string, primary?: unknown): Promise<Record<string, JsonValue>> => {
-        const detail = serializeFailure(primary ?? { code, message: code, outcome: "known", effect: "none", phase: "before-call" }, { fallbackCode: code, origin: "dsh", operation: phase === "capture" ? "report.capture" : "native.admission", resource: finalizeId, fallbackOutcome: "unknown" });
-        const secondary = await recordDshIssue(agent.id, workdir, finalizeId, phase, detail.code, detail);
-        return JSON.parse(JSON.stringify({ ok: false, ...detail, phase: detail.phase ?? phase, category: phase, guidance: FINALIZER_MANUAL_RETRY_GUIDANCE,
-          ...(secondary ? { diagnostics: [...(detail.diagnostics ?? []), secondary].slice(0, 3) } : {}) })) as Record<string, JsonValue>;
-      };
-      const subagents = c.get("subagents") as SubagentsLike | undefined;
-      if (!subagents) return { ...await deferred("dispatch", "NATIVE_SUBAGENTS_UNAVAILABLE"), retryable: false };
-      // Read the canonical reservation before optional child discovery. A pinned
-      // executor must remain sendable even when catalog/creation metadata is gone.
-      let pending: PendingDispatch[];
-      try { pending = await readPendingDispatches(agent.id, workdir); }
-      catch { return deferred("dispatch", "QUEUED_INVENTORY_UNAVAILABLE"); }
-      const current = pending.find((item) => item.finalizeId === finalizeId);
-      if (!current) {
-        const known = await reusableFinalizers.recoverAcknowledgement(agent as FinalizerAgent, workdir, finalizeId).catch(() => undefined);
-        return known as Record<string, JsonValue> | undefined ?? { ok: false, reason: "The canonical finalizer job is no longer queued." };
-      }
-      if (!current.execution) {
-        const reused = await resolveFinalizerReuse({
-          finalizeId, parentSessionId: agent.id, label: finalizerChildLabel(finalizeId), subagents,
-        });
-        if (reused && "deferred" in reused) return deferred("dispatch", "CHILD_CATALOG_UNAVAILABLE");
-        if (reused) return { ok: true, reused: true, runId: reused.runId };
-      }
-      const pinnedNative = current.execution?.route === "native-continuable";
-      let capability;
-      for (let attempt = 0; attempt < 2; attempt++) {
-        capability = await resolveDshDelegationCapability({ getService: (name) => c.get(name), agent, role: "finalizer", provider: "spawn", requestedModel: current.model, requestedReasoningEffort: current.reasoningEffort });
-        if (capability.ready) break;
-      }
-      if (!capability) return deferred("dispatch", "DELEGATION_CAPABILITY_UNAVAILABLE");
-      try {
-        if ((pinnedNative || capability.reusable || capability.selectedRoute === "team") && !current.endedAt) throw Object.assign(new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE"), { code: "DSH_REPORT_BOUNDARY_UNAVAILABLE" });
-        await captureDshParentReport(agent.id, workdir, current);
-      } catch (error) {
-        return deferred("capture", safeCaptureFailureCode(error), error);
-      }
-      if (!pinnedNative && !capability.ready) return deferred("dispatch", capability.reason ?? "DELEGATION_CAPABILITY_UNAVAILABLE");
-      const selection = await selectDshRoleModel({ agent: agent as FinalizerAgent, role: "finalizer",
-        supportsOptions: capability.supportsOptions === true, getService: (name) => c.get(name),
-        hints: { model: current.model, reasoningEffort: current.reasoningEffort } });
-      if (pinnedNative || capability.reusable && current.preferReuse === true) {
-        const result = await reusableFinalizers.dispatch(agent as FinalizerAgent, workdir, { ...current, finalizeId, prompt: current.prompt!, selection }, capability);
-        if (result.ok !== true) {
-          const secondary = await recordDshIssue(agent.id, workdir, finalizeId, "dispatch", String(result.code ?? "REUSABLE_DISPATCH_DEFERRED"), result);
-          if (secondary) return { ...result, diagnostics: [...(Array.isArray(result.diagnostics) ? result.diagnostics : []), secondary] } as Record<string, JsonValue>;
-        }
-        return result as Record<string, JsonValue>;
-      }
-      // An admitted reusable executor is immutable even if current capability selects native one-shot.
-      if (current.execution) return deferred("dispatch", "DSH_FINALIZER_EXECUTOR_PINNED");
-      try {
-        const controller = new AbortController();
-        const child = await startNativeActivation(subagents, {
-          provider: "spawn", label: finalizerChildLabel(finalizeId), signal: controller.signal,
-          request: { parent: agent, prompt: [{ type: "text", text: current.prompt! }],
-            ...(Object.keys(selection.applied.options).length ? { agentOptions: selection.applied.options } : {}),
-          },
-        });
-        if (!child.childId) throw Object.assign(new Error("NATIVE_ADMISSION_RECEIPT_INVALID"), { code: "NATIVE_ADMISSION_RECEIPT_INVALID" });
-        const runId = child.childId;
-        finalizerDispatches.set(finalizeId, { runId, settled: false });
-        if (child.result !== undefined) {
-          const settle = (): void => {
-            const record = finalizerDispatches.get(finalizeId);
-            if (record?.runId === runId) record.settled = true;
-            // Core ignores this if knowledge.done already committed a terminal result.
-            void recordDshIssue(agent.id, workdir, finalizeId, "writer", "WRITER_CHILD_EXITED");
-          };
-          void Promise.resolve(child.result).then(settle, settle)
-            .finally(() => (child.dispose ? child.dispose() : undefined)).catch(() => undefined);
-        }
-        return { ok: true, runId, executor: "native-one-shot", modelSelection: JSON.parse(JSON.stringify(selection)) as JsonValue };
-      } catch (error) {
-        // Native admission can have succeeded before its acknowledgement failed.
-        // The next entry must inspect the child catalog, not blindly start again.
-        return deferred("dispatch", "NATIVE_ADMISSION_UNKNOWN", error);
-      }
-    })();
-    dispatchFlights.set(key, run);
-    try { return await run; } finally { if (dispatchFlights.get(key) === run) dispatchFlights.delete(key); }
-  }
-  async function sweepPending(agent: { id: string; session?: { header?: { parentSession?: string } } }, workdir: string, force = false): Promise<void> {
-    if (agent.session?.header?.parentSession) {
-      const teams = c.get("agentTeams") as { tryMembership?(actor: unknown): { role?: string } | undefined } | undefined;
-      if (teams?.tryMembership?.(agent)?.role !== "lead") return; // No writer-child takeover; a real forked Lead may own its own Team.
-    }
-    const key = sessionKey(agent.id, workdir);
-    const current = pendingSweeps.get(key);
-    if (current) return current;
-    if (!force && completedSweeps.has(key)) return;
-    const sweep = (async () => {
-      try {
-        const pending = await readPendingDispatches(agent.id, workdir);
-        let deferred = false;
-        for (const dispatch of pending) {
-          const result = await dispatchOne(agent, workdir, dispatch);
-          if (result.ok !== true || result.admitted === false) {
-            deferred = true;
-            if (result.ok !== true) console.warn("[claw-kit] queued finalizer dispatch deferred:", result.code ?? result.reason);
-          }
-        }
-        if (deferred) completedSweeps.delete(key);
-        else completedSweeps.add(key);
-      } catch {
-        console.warn("[claw-kit] queued finalizer reconciliation deferred: QUEUED_INVENTORY_UNAVAILABLE");
-      }
-    })();
-    pendingSweeps.set(key, sweep);
-    try { await sweep; } finally { if (pendingSweeps.get(key) === sweep) pendingSweeps.delete(key); }
-  }
-
-  const roleWakeups = new Map<string, Promise<void>>();
-  function parentOf(actor: FinalizerAgent): FinalizerAgent | undefined {
-    const parentId = actor.session?.header?.parentSession;
-    if (!parentId) return;
-    const registry = c.get("agents") as { get?(id: string): unknown } | undefined;
-    const registered = registry?.get?.(parentId) as FinalizerAgent | undefined;
-    if (registered?.id === parentId) return registered;
-    const teams = c.get("agentTeams") as { tryMembership?(actor: unknown): { root?: FinalizerAgent; role?: string } | undefined } | undefined;
-    const member = teams?.tryMembership?.(actor);
-    if (member?.role === "teammate" && member.root?.id === parentId) return member.root;
-  }
-  async function finishOwnedDelegate(actor: FinalizerAgent, workdir: string, session: ClawSession, operation: string, input: Record<string, unknown>, output: Record<string, unknown> | undefined, internalFailures: JsonValue[]): Promise<boolean> {
-    const parent = parentOf(actor);
-    const finalizeId = input.finalizeId;
-    if (!parent || typeof finalizeId !== "string" || !/^[a-f0-9]{64}$/i.test(finalizeId)) return false;
-    if (operation !== "knowledge.done" && !(operation === "knowledge.claim" && output?.claimed === false)) return false;
-    // Modern claims close through the shared application owner. Do not run a
-    // second close sequence after it succeeded or reported a deferred outcome.
-    if (output?.delegateClosed === true) return true;
-    if (output?.delegateCloseDeferred === true) return false;
-    const { text } = await runOneOff(["internal-dsh-finalizer-inspect", "--finalize-id", finalizeId, "--host", "dsh"], workdir, parent.id);
-    const inventory = parseProtocol(text);
-    const row = (Array.isArray(inventory?.executions) ? inventory.executions : []).find((value: unknown) => value !== null && typeof value === "object" && (value as Record<string, unknown>).finalizeId === finalizeId) as {
-      status?: string; execution?: { memberSessionId?: string; delegatePlanPath?: string; releasedAt?: string };
-    } | undefined;
-    if (row?.execution?.memberSessionId !== actor.id || !row.execution.delegatePlanPath || row.execution.releasedAt) return false;
-    if (!["succeeded", "failed", "expired"].includes(row.status ?? "")) return false;
-    const invoke = async (op: string, args: Record<string, unknown>) => {
-      const canonical = daemonInput(op, args);
-      const response = await session.request(op, canonical, 30000, (send) => routeCommand(send,
-        () => runCommandBaseline(subprocess as SubprocessLike, workdir, actor.id, op, canonical)));
-      if (!response.ok) throw Object.assign(new Error("DSH_DELEGATE_CLOSE_DEFERRED"), { code: "DSH_DELEGATE_CLOSE_DEFERRED" });
-      return response;
-    };
-    const shown = await invoke("plan.show", {});
-    const plan = shown.output?.plan as { templateId?: string; knowledgeCapture?: boolean; status?: string; tasks?: Array<{ id: number; status: string }> } | undefined;
-    if (typeof shown.output?.planPath !== "string" || path.resolve(shown.output.planPath) !== path.resolve(row.execution.delegatePlanPath)
-        || plan?.templateId !== "internal-dsh-knowledge-delegate" || plan.knowledgeCapture !== false || plan.status?.startsWith("end.")) return false;
-    // Never finish an unrelated/current-next plan or an unfinished assignment.
-    const pending = plan.tasks?.filter(task => task.status !== "done") ?? [];
-    const applyEffects = (response: ClawExecuteResult) => {
-      const effects = consumeHostActions(response.hostActions as HostAction[] | undefined, goals, actor);
-      internalFailures.push(...effects.failures as unknown as JsonValue[]);
-      const guidance = renderGuidanceSnapshot(response.output as Record<string, unknown> | undefined);
-      if (guidance) guidanceByAgent.set(actor, guidance);
-      const todos = projectTodos(effects.projection, response.output as Record<string, unknown> | undefined);
-      const target = actor as unknown as { session?: { append?(type: string, data: unknown): unknown } };
-      if (todos) {
-        try { target.session?.append?.("todo/write", { todos }); }
-        catch { internalFailures.push({ kind: "update_plan", code: "PROGRESS_PROJECTION_FAILED" }); }
-      }
-    };
-    if (row.status === "succeeded") {
-      if (pending.some(task => task.id !== 3)) return false;
-      if (pending.length) applyEffects(await invoke("task.done", { id: 3 }));
-      applyEffects(await invoke("plan.done", { retrospective: "Adapter confirmed this job's terminal receipt and completed its matching delegate." }));
-    } else {
-      applyEffects(await invoke("plan.edit", { status: "end.leave" }));
-    }
-    return true;
-  }
-  async function releaseFinishedRole(actor: FinalizerAgent, workdir: string): Promise<void> {
-    const parent = parentOf(actor);
-    if (!parent) return;
-    const key = sessionKey(parent.id, workdir);
-    try {
-      const { text } = await runOneOff(["internal-dsh-finalizer-inspect", "--host", "dsh"], workdir, parent.id);
-      const inventory = parseProtocol(text);
-      if (inventory?.ok !== true || !Array.isArray(inventory.executions)) return;
-      const rows = inventory.executions as Array<{ finalizeId?: string; execution?: { memberSessionId?: string; releasedAt?: string } }>;
-      const owned = rows.filter(row => row.execution?.memberSessionId === actor.id && !row.execution.releasedAt && /^[a-f0-9]{64}$/i.test(row.finalizeId ?? ""));
-      if (!owned.length) return;
-      for (const row of owned) {
-        await runOneOff(["internal-dsh-finalizer-release", "--finalize-id", row.finalizeId!, "--host", "dsh"], workdir, actor.id);
-      }
-      completedSweeps.delete(key);
-      // Never await the parent's active sweep from a child response: the sweep
-      // can itself be waiting for delivery to this child. Join it asynchronously.
-      if (!roleWakeups.has(key)) {
-        const wake = Promise.resolve().then(async () => {
-          await pendingSweeps.get(key)?.catch(() => undefined);
-          if (finalizerAbort.signal.aborted) return;
-          const currentParent = parentOf(actor);
-          if (currentParent) await sweepPending(currentParent, workdir, true);
-        }).catch(() => console.warn("[claw-kit] reusable finalizer queue wake deferred"));
-        roleWakeups.set(key, wake);
-        void wake.finally(() => { if (roleWakeups.get(key) === wake) roleWakeups.delete(key); });
-      }
-    } catch {
-      completedSweeps.delete(key);
-      console.warn("[claw-kit] reusable finalizer release reconciliation deferred");
-    }
-  }
-
-  async function recoverClaimReceipt(agentId: string, workdir: string, finalizeId: unknown): Promise<ClawExecuteResult | undefined> {
-    if (typeof finalizeId !== "string" || !/^[a-f0-9]{64}$/i.test(finalizeId)) return;
-    const key = sessionKey(agentId, workdir);
-    let recovery = sessions.get(key);
-    if (!recovery) {
-      recovery = new ClawSession(subprocess as SubprocessLike, workdir, agentId, "claw", 15000, SESSION_TRANSPORT_IDLE_MS,
-        (idle) => release(key, idle, "idle-timeout"), (dead) => release(key, dead, "child-exit"), true);
-      sessions.set(key, recovery);
-    }
-    const input = { finalizeId };
-    const receipt = await recovery.request("knowledge.claim.receipt", input, 30000, (send) => routeCommand(
-      send, () => runCommandBaseline(subprocess as SubprocessLike, workdir, agentId, "knowledge.claim.receipt", input),
-    ));
-    if (receipt.ok !== true || receipt.output?.claimed !== true) return;
-    // Preserve the original model operation: this is its lost receipt, not a
-    // second claim or a new model-visible operation.
-    return { ...receipt, command: "knowledge.claim", output: { ...receipt.output, command: "knowledge.claim", recovered: true } };
-  }
-
-  async function recoverDoneReceipt(agentId: string, workdir: string, originalInput: unknown): Promise<ClawExecuteResult | undefined> {
-    if (!originalInput || typeof originalInput !== "object" || Array.isArray(originalInput)) return;
-    const original = originalInput as Record<string, unknown>;
-    if (typeof original.finalizeId !== "string" || (original.status !== "succeeded" && original.status !== "failed")) return;
-    const key = sessionKey(agentId, workdir);
-    let recovery = sessions.get(key);
-    if (!recovery) {
-      recovery = new ClawSession(subprocess as SubprocessLike, workdir, agentId, "claw", 15000, SESSION_TRANSPORT_IDLE_MS,
-        idle => release(key, idle, "idle-timeout"), dead => release(key, dead, "child-exit"), true);
-      sessions.set(key, recovery);
-    }
-    const input = { finalizeId: original.finalizeId, expectedStatus: original.status,
-      expectedResult: original.status === "succeeded" ? original.result : original.error,
-      ...(original.claimToken !== undefined ? { claimToken: original.claimToken } : {}) };
-    const receipt = await recovery.request("knowledge.done.receipt", input, 30000, send => routeCommand(
-      send, () => runCommandBaseline(subprocess as SubprocessLike, workdir, agentId, "knowledge.done.receipt", input)));
-    if (receipt.ok !== true || receipt.output?.terminal !== true || receipt.output?.matches !== true) return;
-    // This authenticates the original commit only. Receipt reads must never
-    // repeat completion effects or silently close another focused workflow.
-    return { ...receipt, command: "knowledge.done", output: { ok: true, command: "knowledge.done", finalizeId: original.finalizeId,
-      ...(original.status === "succeeded" ? { completed: true } : { failed: true }), alreadyDone: true,
-      completionRecovered: true, delegateCloseDeferred: true, postCommitEffectsVerified: false,
-      notes: "Canonical terminal receipt matched; report/encoding/delegate effects remain unverified. No completion mutation or closeout effect was replayed." } };
-  }
 
   // Session-start: auto-claw equivalent — recover a bound plan and inject its
   // compact guidance snapshot. Fail-open.
@@ -806,20 +385,14 @@ export function apply(ctx: unknown): void {
           const parsed = parseProtocol(text);
           const rendered = renderGuidanceSnapshot(parsed ?? undefined);
           if (rendered) guidanceByAgent.set(agent, rendered);
-        } catch { /* Context is fail-open; finalizer recovery is independent. */ }
-        await sweepPending(agent as { id: string; session?: { header?: { parentSession?: string } } }, workdir);
-        if (!agent.session?.header?.parentSession) {
-          const status = await readDshAlerts(agent.id!, workdir);
-          if (status.alerts.length) guidanceByAgent.set(agent, (guidanceByAgent.get(agent) ?? "")
-            + "\nFinalizer alerts (canonical job status, do not manually retry): " + JSON.stringify(status.alerts));
-        }
+        } catch { /* Context is fail-open; old jobs are never automatically resumed. */ }
       } catch {
         // fail-open
       }
     })();
   });
 
-  // A parent snapshots proven history before writer dispatch; no project-global executable collector.
+  // Workers read source history on demand; parent dispatch does not certify materials.
 
   c.on("dispose", () => {
     finalizerAbort.abort();
@@ -829,7 +402,7 @@ export function apply(ctx: unknown): void {
   tools.register({
     name: "claw_run",
     description: [
-      "Run one claw-kit workflow operation in the current session through the claw session daemon. Operation names use dot form: context, plan.create, plan.start, plan.wait, plan.resume, plan.edit, plan.done, plan.show, task.add, task.edit, task.remove, task.done, subplan.create, knowledge.claim, knowledge.done, knowledge.done.receipt, search, search.index.refresh. `search.index.refresh` takes no arguments and refreshes only the calling session's project vector index. `context` restores the current host-scoped startup snapshot with no arguments. Other arguments use canonical snake_case: plan.create takes title, goal, knowledge_capture (optional boolean, defaults to the template setting or true; false disables knowledge accumulation); project setup is automatic and scope is not accepted; plan.start takes goal, requirements, questions, acceptance, rules, key_decisions, references, and add_tasks; plan.edit accepts the same plan fields plus summary, removal fields, retrospective fields, status, or an ordered canonical operations array; plan.resume takes optional plan_id; plan.done takes retrospective, key_decisions, what_worked, issues, and follow_ups; task.add takes title/detail or tasks; task.done takes id/choice or tasks; task.remove takes id or tasks to delete task items; knowledge.claim takes finalize_id and knowledge.done takes finalize_id, status, plus result (succeeded) or error (failed); trusted claim credentials are resolved by Core, claim_token is optional legacy input and must match if supplied. knowledge.done.receipt reads the canonical result with finalize_id and optional expected_status/expected_result, without mutation. References are arrays of {path, why}.",
+      "Run one claw-kit workflow operation in the current session through the claw session daemon. Operation names use dot form: context, plan.create, plan.start, plan.wait, plan.resume, plan.edit, plan.done, plan.show, task.add, task.edit, task.remove, task.done, subplan.create, knowledge.materials, search, search.index.refresh. `search.index.refresh` takes no arguments and refreshes only the calling session's project vector index. `context` restores the current host-scoped startup snapshot with no arguments. Other arguments use canonical snake_case: plan.create takes title, goal, knowledge_capture (optional boolean, defaults to the template setting or true; false disables knowledge accumulation); project setup is automatic and scope is not accepted; plan.start takes goal, requirements, questions, acceptance, rules, key_decisions, references, and add_tasks; plan.edit accepts the same plan fields plus summary, removal fields, retrospective fields, status, or an ordered canonical operations array; plan.resume takes optional plan_id; plan.done takes retrospective, key_decisions, what_worked, issues, and follow_ups; task.add takes title/detail or tasks; task.done takes id/choice or tasks; task.remove takes id or tasks to delete task items; knowledge.materials takes source_session_key and source_plan to read source evidence and generate ordinary writer templates; it does not claim work or register a completion. References are arrays of {path, why}.",
       "Semantic role work: delegate.start takes role (researcher or feature-architect), brief, and optional output (auto/reply/report); delegate.result takes assignment_id and optional wait_ms; assigned workers use delegate.complete with assignment_id, status (completed/failed), result or error, and optional document_path. The adapter selects Team/native, reuses members, queues and recovers assignments, and validates report registration. Do not manage underlying backend handles. Researcher never writes reports; architecture auto writes only when an active task exists.",
       "The adapter forges session identity and workspace from the calling agent — never pass session, host, or workdir arguments. Unsupported arguments for mapped operations fail immediately instead of being silently dropped. It auto-consumes CLI hostActions: plan progress projection and native DSH goal sync happen inside the tool, so do not call goal tools for claw plans. The result is a compact guidance snapshot; follow it as the only next-step contract.",
     ].join(" "),
@@ -867,22 +440,12 @@ export function apply(ctx: unknown): void {
       if (operation === "delegate.result") return foreground.result(agent as DelegationActor, workdir, args.args ?? {}, exec.signal);
       if (operation === "delegate.complete") return foreground.complete(agent as DelegationActor, workdir, args.args ?? {});
       const input = daemonInput(operation, (args.args ?? {}) as Record<string, unknown>);
-      // Recover queued writers on the first trusted parent entry, independently
-      // of any later plan terminal response. Child sessions never own this sweep.
-      if (!["knowledge.done", "knowledge.done.receipt"].includes(operation)) {
-        await sweepPending(agent as { id: string; session?: { header?: { parentSession?: string } } }, workdir);
-      }
       if (operation === "context") {
         const { text } = await runOneOff(["context", "--host", "dsh"], workdir, agent.id);
         const context = parseProtocol(text);
         if (!context) throw new Error("claw context returned no valid JSON protocol result");
-        const alerts = agent.session?.header?.parentSession ? { alerts: [] as JsonValue[] }
-          : await readDshAlerts(agent.id, workdir);
-        if (alerts.alerts.length) context.finalizationAlerts = alerts.alerts;
-        if (alerts.error) context.finalizationAlertError = alerts.error;
         const rendered = renderGuidanceSnapshot(context);
-        if (rendered) guidanceByAgent.set(agent, rendered + (alerts.alerts.length
-          ? "\nFinalizer alerts (canonical job status, do not manually retry): " + JSON.stringify(alerts.alerts) : ""));
+        if (rendered) guidanceByAgent.set(agent, rendered);
         return context as Record<string, JsonValue>;
       }
       const key = sessionKey(agent.id, workdir);
@@ -903,14 +466,7 @@ export function apply(ctx: unknown): void {
         const diagnostics: unknown[] = [];
         try { await session!.close(); } catch (error) { diagnostics.push(error); }
         if (sessions.get(key) === session) sessions.delete(key);
-        completedSweeps.delete(key);
-        let recovered: ClawExecuteResult | undefined;
-        try {
-          if (operation === "knowledge.claim") recovered = await recoverClaimReceipt(agent.id!, workdir, (input as { finalizeId?: unknown }).finalizeId);
-          else if (operation === "knowledge.done") recovered = await recoverDoneReceipt(agent.id!, workdir, input);
-        } catch (error) { diagnostics.push(error); }
-        if (!recovered) throw unknownOperationError(operation, primary, diagnostics);
-        return recovered;
+        throw unknownOperationError(operation, primary, diagnostics);
       };
       try { response = await request; }
       catch (error) {
@@ -929,6 +485,20 @@ export function apply(ctx: unknown): void {
               : "The operation has durable effects. Inspect canonical state; do not replay the mutation." } as Record<string, JsonValue>;
         }
         throw operationFailureError(response.command ?? "unknown", response.error);
+      }
+      if (operation === "knowledge.materials" && response.output) {
+        const material = response.output;
+        try {
+          const source = input as { sourceSessionKey: string };
+          const history = await readParentSessionEvents(source.sourceSessionKey, "DSH_REPORT_HISTORY_UNAVAILABLE", "DSH_REPORT_HOST_UNAVAILABLE");
+          const rows = extractPlanConversation(history as EventLike[], source.sourceSessionKey,
+            material.startedAt ? Date.parse(String(material.startedAt)) : undefined,
+            material.endedAt ? Date.parse(String(material.endedAt)) : undefined);
+          fs.writeFileSync(String(material.reportPath), rows.map(row => JSON.stringify(row)).join("\n") + (rows.length ? "\n" : ""), "utf8");
+          response.output = { ...material, conversationStatus: "available", messageCount: rows.length };
+        } catch (error) {
+          response.output = { ...material, conversationStatus: "unavailable", diagnostic: serializeFailure(error, { fallbackCode: "DSH_REPORT_HISTORY_UNAVAILABLE", operation: "knowledge.materials", origin: "dsh" }) };
+        }
       }
       const { consumed, projection, failures } = consumeHostActions(
         response.hostActions as HostAction[] | undefined,
@@ -972,38 +542,11 @@ export function apply(ctx: unknown): void {
       } catch {
         // fail-open: todo sync must never break a settled mutation
       }
-      // Knowledge closeout: the daemon returns a knowledgeDispatch on the
-      // response envelope for a terminal plan transition. DSH has a native
-      // executor service: BOTH policies use the same capability-selected flow.
-      // Reusable roles are adapter-owned; old one-shot jobs keep their original
-      // admission evidence. The parent model never manages a writer.
-      // NOTE: `dispatch` is surfaced FIRST (right after ok/command) so a
-      // large projection or dispatch prompt can never push the dispatch
-      // confirmation past a tool-result truncation (observed: dispatch was
-      // cut at ~1200 chars, which made the auto-dispatch look like it failed).
       if (response.knowledgeDispatch !== undefined) {
-        // Dispatch first captures available parent history through the live Host.
-        const dispatch = response.knowledgeDispatch as { finalizeId?: string; prompt?: string };
-        visible.dispatch = await dispatchOne(agent as { id: string }, workdir, dispatch) as unknown as JsonValue;
-        // A failed dispatch stays queued and is retried by the next trusted entry.
-        completedSweeps.delete(key);
-        // Keep only a compact dispatch summary in the model-visible output:
-        // the full writer prompt is consumed by the subagent, and a huge
-        // prompt was pushing `dispatch` past truncation. Never expose prompt.
-        visible.knowledgeDispatch = {
-          schemaVersion: 1,
-          finalizeId: dispatch?.finalizeId,
-        } as unknown as JsonValue;
-      }
-      if (["knowledge.claim", "knowledge.done"].includes(operation) && agent.session?.header?.parentSession) {
-        const internalFailures: JsonValue[] = [];
-        try {
-          if (await finishOwnedDelegate(agent as FinalizerAgent, workdir, session, operation, input as Record<string, unknown>, response.output, internalFailures)) visible.delegateClosed = true;
-        } catch { visible.delegateCloseDeferred = true; }
-        if (internalFailures.length) visible.hostEffectFailures = [...(Array.isArray(visible.hostEffectFailures) ? visible.hostEffectFailures : []), ...internalFailures];
-      }
-      if (["plan.done", "plan.edit", "knowledge.done", "knowledge.claim"].includes(operation) && agent.session?.header?.parentSession) {
-        await releaseFinishedRole(agent as FinalizerAgent, workdir);
+        const dispatch = response.knowledgeDispatch as SourceDispatch;
+        visible.dispatch = await dispatchSource(agent as { id: string }, workdir, dispatch) as unknown as JsonValue;
+        visible.knowledgeDispatch = { schemaVersion: dispatch.schemaVersion ?? 1,
+          ...(dispatch.dispatchId ? { dispatchId: dispatch.dispatchId } : {}) };
       }
       // Move dispatch to the front so truncation cannot hide the dispatch
       // confirmation (large projections previously pushed it past the limit).

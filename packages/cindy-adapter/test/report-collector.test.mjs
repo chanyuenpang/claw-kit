@@ -36,7 +36,7 @@ test("Cindy claim collector keeps window conversation and nearest trigger, filte
     assert.equal(result.status, 0, result.stderr);
     const events = fs.readFileSync(report, 'utf8').trim().split('\n').map(line => JSON.parse(line));
     assert.deepEqual(events.map(({ role, message }) => [role, message]), [
-      ['user', 'trigger'], ['assistant', 'first commentary'], ['assistant', 'second commentary'],
+      ['user', 'trigger'], ['assistant', 'preceding commentary'], ['assistant', 'first commentary'], ['assistant', 'second commentary'],
       ['user', 'correction'], ['assistant', 'final'],
     ]);
     assert.ok(events.every(event => event.turnId === 'same-turn'));

@@ -1,7 +1,10 @@
 ﻿# Adapter-owned report collection
 
-<!-- state: current -->
-## Current behavior
+<!-- document-state: historical -->
+
+This document records report capture for the former claimable-job lifecycle. New DSH/Codex/Cindy source-plan handoff collection is owned by [conversation capture Truth](finalizer-conversation-capture.md) and [source-plan handoff ADR](../adr/source-plan-knowledge-handoff.md); legacy jobs retain this capture receipt contract.
+
+## Former behavior
 
 - Codex/Cindy claim-time capture uses versioned adapter-owned collector processes. The adapter owns discovery and interpretation of native history and payload; Core and CLI do not interpret Host message DTOs. DSH instead uses trusted live parent-side capture before writer admission, without an executable collector descriptor; its operational route is owned by [DSH finalization Truth](<dsh-knowledge-dispatch-and-finalization.md>) and the decision by [report-collection ADR](<../adr/adapter-owned-report-collection.md>).
 - Codex/Cindy collector descriptors and requests use contract v1 and identify the collector version and a unique capture ID. Those collectors write only to the staging path supplied by CLI and communicate payload completeness through exit status, not stdout content.

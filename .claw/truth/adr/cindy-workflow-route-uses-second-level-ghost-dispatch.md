@@ -15,7 +15,7 @@ The claw-kit Cindy plugin exposes only `list_tools` and `call_tool` at the top l
 - Plan state remains canonical in `.claw` `plan.json`; the Cindy Ghost progress card is a presentation projection and never becomes a second plan store.
 - The normal Cindy `plan.create` catalog does not offer caller-selected storage scope. New public plans use the unified project workflow; `knowledge_capture` controls accumulation rather than storage. Core retains internal session scope for legacy recovery including legacy delegate workflows.
 - Cindy returns a minimal workflow contract rather than raw CLI/Host internals: actionable status/path fields, complete lifecycle next steps, current task or question, local guidance, and any required `knowledgeDispatch` are retained; raw plan/event/request data, completion hooks, host actions, and duplicate guidance are excluded.
-- Knowledge finalization uses the plugin's own claim/done protocol: `knowledge.claim` atomically freezes the originating task conclusions, then exactly one `knowledge.done` completes the job with the returned `claimToken`.
+- New source-plan finalization uses `knowledge.materials` and ordinary non-capturing plan/subplan completion, not claim/done. The plugin's claim/done protocol remains for explicit legacy jobs only; see [source-plan handoff ADR](source-plan-knowledge-handoff.md).
 
 ## Alternatives
 
