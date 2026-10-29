@@ -1,5 +1,5 @@
 {
-  "version": "0.2.67",
+  "version": "0.2.69",
   "id": "claw-kit",
   "name": "claw-kit",
   "maxTasksToKeep": 9,
@@ -20,6 +20,7 @@
     "autoUpdate": true,
     "externalDocPaths": [],
     "embedding": {
+      "enabled": false,
       "provider": "local",
       "model": "jinaai/jina-embeddings-v2-base-zh",
       "outputDimensionality": 768
