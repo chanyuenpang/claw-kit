@@ -1147,3 +1147,121 @@ test("session-start turns an unavailable CLI into an installation prompt", { ski
     fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });
+
+
+function writeSessionOpenFixture(fixtureDir, scriptSource) {
+  const scriptPath = path.join(fixtureDir, "fake-claw-session.cjs");
+  fs.writeFileSync(scriptPath, scriptSource, "utf8");
+  fs.writeFileSync(
+    path.join(fixtureDir, "claw.cmd"),
+    `@echo off\r\n"${process.execPath}" "${scriptPath}" %*\r\n`,
+    "utf8",
+  );
+}
+
+test("Cindy session open tolerates a cold start beyond the old 5s budget", { skip: process.platform !== "win32" }, async () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-cold-open-"));
+  writeSessionOpenFixture(fixtureDir, [
+    "const readline = require('node:readline');",
+    "setTimeout(() => {",
+    "  process.stdout.write(JSON.stringify({ ok: true, command: 'session.open', session: { state: 'live' } }) + '\\n');",
+    "}, 6000);",
+    "readline.createInterface({ input: process.stdin }).on('line', (line) => {",
+    "  if (line.trim() === 'session close') process.exit(0);",
+    "  process.stdout.write(JSON.stringify({ ok: true, command: 'plan.show', output: { planStatus: 'process.active' } }) + '\\n');",
+    "});",
+  ].join("\n"));
+  const child = spawn(process.execPath, [workerPath], {
+    cwd: fixtureDir,
+    env: { ...process.env, PATH: `${fixtureDir}${path.delimiter}${process.env.PATH || ""}` },
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  try {
+    const startedAt = Date.now();
+    const response = await requestWorker(child, {
+      jsonrpc: "2.0", id: 1, method: "claw/execute",
+      params: { operation: "plan.show", args: {}, sessionId: "cold-open", workdir: fixtureDir },
+    }, 20000);
+    assert.equal(response.result.ok, true, JSON.stringify(response));
+    assert.ok(Date.now() - startedAt >= 5800, "the fixture must really delay the handshake");
+  } finally {
+    await stopWorker(child);
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("Cindy session open timeout reports budget, pid, launch shape and stderr", { skip: process.platform !== "win32" }, async () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-open-timeout-"));
+  writeSessionOpenFixture(fixtureDir, [
+    "const readline = require('node:readline');",
+    "process.stderr.write('fixture stderr marker: handshake never starts pid=' + process.pid + '\\n');",
+    "readline.createInterface({ input: process.stdin }).on('line', () => {});",
+  ].join("\n"));
+  const child = spawn(process.execPath, [workerPath], {
+    cwd: fixtureDir,
+    env: { ...process.env, PATH: `${fixtureDir}${path.delimiter}${process.env.PATH || ""}`, CLAW_CINDY_SESSION_OPEN_TIMEOUT_MS: "1500" },
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  let fakePid = null;
+  try {
+    const response = await requestWorker(child, {
+      jsonrpc: "2.0", id: 1, method: "claw/execute",
+      params: { operation: "plan.show", args: {}, sessionId: "open-timeout", workdir: fixtureDir },
+    }, 8000);
+    fakePid = Number(/pid=(\d+)/.exec(JSON.stringify(response.result))?.[1] ?? NaN);
+    assert.equal(response.result.ok, false);
+    assert.equal(response.result.errorCode, "CLAW_SESSION_OPEN_TIMEOUT");
+    assert.equal(response.result.phase, "transport");
+    assert.match(response.result.reason, /timed out after \d+ms \(limit 1500ms, pid \d+, launch cmd\.exe claw\.cmd\)/);
+    assert.match(response.result.reason, /stderr tail is attached/);
+    const diagnostics = response.result.diagnostics;
+    assert.ok(Array.isArray(diagnostics), JSON.stringify(response.result));
+    assert.equal(diagnostics[0].code, "SESSION_OPEN_BUDGET");
+    assert.match(diagnostics[0].message, /\d+ms elapsed of 1500ms/);
+    assert.equal(diagnostics[1].code, "SESSION_OPEN_STDERR");
+    assert.match(diagnostics[1].message, /fixture stderr marker/);
+  } finally {
+    await stopWorker(child);
+    // The timed-out transport was killed, but the fake CLI can outlive the
+    // cmd.exe wrapper; release its working directory before removing it.
+    if (Number.isInteger(fakePid)) { try { process.kill(fakePid); } catch { /* already gone */ } }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("Cindy session open preserves the CLI's structured stderr failure", { skip: process.platform !== "win32" }, async () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-open-cause-"));
+  writeSessionOpenFixture(fixtureDir, [
+    "process.stderr.write('(node:1) ExperimentalWarning: fixture warning\\n');",
+    "process.stderr.write(JSON.stringify({ error: {",
+    "  code: 'SESSION_DAEMON_UNAVAILABLE',",
+    "  message: 'The claw session daemon did not become available within 5000ms.',",
+    "  outcome: 'known', origin: 'client', operation: 'daemon.start',",
+    "  diagnostics: [{ code: 'SESSION_DAEMON_STDERR', message: 'fixture daemon crashed', outcome: 'known' }],",
+    "} }, null, 2) + '\\n');",
+    "process.exitCode = 1;",
+  ].join("\n"));
+  const child = spawn(process.execPath, [workerPath], {
+    cwd: fixtureDir,
+    env: { ...process.env, PATH: `${fixtureDir}${path.delimiter}${process.env.PATH || ""}` },
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  try {
+    const response = await requestWorker(child, {
+      jsonrpc: "2.0", id: 1, method: "claw/execute",
+      params: { operation: "plan.show", args: {}, sessionId: "open-cause", workdir: fixtureDir },
+    }, 8000);
+    assert.equal(response.result.ok, false);
+    assert.equal(response.result.errorCode, "SESSION_DAEMON_UNAVAILABLE");
+    assert.match(response.result.reason, /claw session daemon did not become available/);
+    assert.ok(Array.isArray(response.result.diagnostics), JSON.stringify(response.result));
+    assert.equal(response.result.diagnostics[0].code, "SESSION_DAEMON_STDERR");
+  } finally {
+    await stopWorker(child);
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});

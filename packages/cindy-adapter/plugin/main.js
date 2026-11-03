@@ -49,6 +49,12 @@ function traceHook(hook, fields = {}) {
   console.error(`[claw-kit hook] ${JSON.stringify({ hook, ts: new Date().toISOString(), ...fields })}`);
 }
 
+// The worker owns its transport budgets (15s session open, 30s command) and
+// returns the structured failure. The broker must outlive them, otherwise a
+// generic RPC timeout hides the real cause from the model.
+const CLAW_EXECUTE_TIMEOUT_MS = 45000;
+const CLAW_SESSION_START_TIMEOUT_MS = 20000;
+
 async function nodeRequest(method, params, timeoutMs = 10000) {
   try {
     const response = await cindy.node.request({ method, params, timeoutMs });
@@ -80,7 +86,7 @@ async function refreshSessionStart(sessionId, workdir) {
     return { failed: true };
   }
   workdirs.set(sessionId, workdir);
-  const result = await nodeRequest('claw/session-start', { sessionId, workdir }, 12000);
+  const result = await nodeRequest('claw/session-start', { sessionId, workdir }, CLAW_SESSION_START_TIMEOUT_MS);
   if (result?.projection?.planStatus) {
     await applyProjection(sessionId, { projection: result.projection }, undefined);
   }
@@ -334,7 +340,7 @@ async function pauseGoalAfterRetries(sessionId, goal) {
     readOnly: false,
     sessionId,
     workdir: workdirs.get(sessionId),
-  });
+  }, CLAW_EXECUTE_TIMEOUT_MS);
   if (result?.projection?.planStatus) {
     await applyProjection(sessionId, result, undefined);
   } else {
@@ -445,7 +451,7 @@ async function dispatchToolCall(msg) {
     readOnly: Boolean(context.workdir_is_read_only),
     sessionId: context.session_id,
     workdir: context.workdir,
-  });
+  }, CLAW_EXECUTE_TIMEOUT_MS);
   if (!execution?.ok) {
     toolFailure(
       msg.callId,
