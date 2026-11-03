@@ -124,8 +124,7 @@ Accepted
 - `packages/core/src/plan.ts`
 - `packages/core/src/memory.ts`
 - `packages/core/src/embedding-worker.ts`
-- `packages/client/src/protocol.ts`
-- `packages/client/src/index.ts`
+- `packages/core/src/session-contract.ts`
 - `packages/cli/src/command-service.ts`
 - `packages/cli/src/codex-host-actions.ts`
 - `packages/cli/src/codex-driver.ts`

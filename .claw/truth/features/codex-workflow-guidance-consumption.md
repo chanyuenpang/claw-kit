@@ -48,8 +48,7 @@
 - `packages/cli/src/codex-driver.ts`
 - `packages/cli/src/codex-host-actions.ts`
 - `packages/cli/src/command-service.ts`
-- `packages/client/src/protocol.ts`
-- `packages/client/src/index.ts`
+- `packages/core/src/session-contract.ts`
 - `packages/codex-adapter/references/workflow-guidance-consumption.md`
 - `packages/codex-adapter/skills/planning/SKILL.md`
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`

@@ -68,8 +68,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - `packages/cli/src/codex-host-actions.ts`
 - `packages/cli/src/command-service.ts`
 - `packages/cli/test/cli.test.ts`
-- `packages/client/src/protocol.ts`
-- `packages/client/src/index.ts`
+- `packages/core/src/session-contract.ts`
 - `.claw/tasks/实现-Goal-目标状态幂等保证并发布-0.1.72/plan.json`
 - `.claw/tasks/验收-0.1.75-短Bootstrap-20260717T1255/plan.json`
 

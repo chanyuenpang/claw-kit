@@ -66,13 +66,13 @@ The repository also needs one maintainer entry that can execute the accepted rel
 - release sync 前的本地提交把“准备发布的本地 guidance 调整”和“从远端吸收最新基线”拆成两段，后续排查 merge 或回滚时更容易定位
 - release sync 冲突的处理原则被固定下来：workflow guidance、测试、适配器文档/技能和 truth 文档都要以“保留远端更新 + 保留本地已验证行为”为准，而不是机械偏向单边版本
 - release 目标版本不再只看本地预期，而是以 merged HEAD 相对已发布 registry artifact 的领先程度来决定
-- Core → Client → CLI 的发布顺序被固定，避免依赖链倒置
+- Core → CLI 的发布顺序被固定，避免依赖链倒置
 - 正式发布不再被“PATH 上必须已有 npm CLI”这个宿主前提卡死，release automation 在更受限的 managed environment 里仍然可行
 - Windows 本地安装路径保持可重复执行，不需要依赖真实发布来完成日常使用
 - npm registry 的短暂传播延迟被正式纳入 closeout 协议，因此“publish 已成功但第一次本地安装仍拿到旧版本”不再会被误判成 release 回滚或安装脚本损坏
 - Ambiguous transport failures no longer authorize blind publication retries; observing external state first prevents duplicate tags, Releases, or package writes while preserving a recoverable retry when nothing landed.
 - 安装烟测成为独立 `update` closeout 的必选项，避免 registry 成功被误写为操作者机器已经采用新版本
-- canonical release gate 固定验证 committed Codex marketplace payload 与隔离 template smoke；完整 plugin bundle tests 和三个 npm 包的 dry-run 由本轮具体风险决定是否追加
+- canonical release gate 固定验证 committed Codex marketplace payload 与隔离 template smoke；完整 plugin bundle tests 和两个 npm 包的 dry-run 由本轮具体风险决定是否追加
 - Template compatibility now advances as one release surface: source templates are updated once before materialization, while the release gate remains side-effect free and exposes exact stale owners for correction.
 - The temporary workspace CLI link breaks a release-development bootstrap cycle without weakening the published-source boundary: it is reversible, version-scoped, and must be replaced by the registry install before the machine is treated as updated.
 - release 与本机 update 形成有序的两个完成边界：release 证明 GitHub、npm 与 committed Codex payload 可交付；随后 `claw-kit:update` 证明操作者机器的 CLI、official identity、source/cache 与新任务 loaded locator 已采用该发布
@@ -121,7 +121,6 @@ The `0.1.87` release was the first recorded use of the narrow workspace-link exc
 - `packages/core/src/templates/plans/default.ts`
 - `package.json`
 - `packages/core/package.json`
-- `packages/client/package.json`
 - `packages/cli/package.json`
 - `packages/codex-adapter/package.json`
 - `packages/openclaw-adapter/package.json`
