@@ -10,7 +10,7 @@ import { serializeCommandFailure } from "../dist/command-failure.js";
 import { SessionCommandExecutor } from "../dist/session-command.js";
 import { SessionRegistryV2 } from "../dist/session-registry-v2.js";
 
-test("one-shot and daemon serialize authoritative rejection identically", () => {
+test("one-shot and persistent session serialize authoritative rejection identically", () => {
   const error = withExecutionFailure(new ClawError("TASK_NOT_FOUND", "session connection task missing"),
     { phase: "prepare", outcome: "known", effect: "none" });
   const expected = { code: "TASK_NOT_FOUND", message: error.message, retryable: false, name: "ClawError", origin: "cli",
@@ -36,7 +36,7 @@ test("nested rejection cannot erase a previously committed outer mutation", () =
 test("real one-shot parent rejection remains known and leaves the parent unchanged", async () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "claw-error-phase-"));
   initProject({ cwd, projectName: "Phase", planning: false });
-  const runtime = path.join(cwd, "daemon-runtime");
+  const runtime = path.join(cwd, "session-runtime");
   const identity = { agentSessionId: path.basename(cwd), workdir: cwd, client: { kind: "adapter" as const, host: "dsh" } };
   const executor = new SessionCommandExecutor(new SessionRegistryV2(runtime));
   const root = await executor.execute(identity, { operation: "plan.create", input: {

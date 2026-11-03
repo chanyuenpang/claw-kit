@@ -4,7 +4,7 @@
 
 ## 每次 beta / 正式发布都先校对版本
 
-1. **先确定目标 CLI base 和授权范围。** 多产物发布使用本次授权的 CLI 候选版本；平台补发使用当前已发布 CLI 的 base，并与源码目标对照。三段 CLI/Core/Client 版本一致，平台版本的前三段必须一致；各平台第四段独立递增，不要求全部相同。DSH 额外核对四段版本与 npm rc 映射。历史版本回发必须另行明确选择，不能冒充最新补发。
+1. **先确定目标 CLI base 和授权范围。** 多产物发布使用本次授权的 CLI 候选版本；平台补发使用当前已发布 CLI 的 base，并与源码目标对照。三段 CLI/Core 版本一致，平台版本的前三段必须一致；各平台第四段独立递增，不要求全部相同。DSH 额外核对四段版本与 npm rc 映射。历史版本回发必须另行明确选择，不能冒充最新补发。
 2. **展示全平台版本盘点。** CLI、Codex、DSH、Cindy、OpenClaw、OpenCode 分别列出源码目标、选中冻结候选（版本/hash/sourceRevision）、已知公开版本、固定 CLI runtime pin、是否选中及待补齐状态。源码 manifest 重置为新 base 的 .0 不代表该平台已有可发布候选；各平台“最后一个 beta”也不代表同一基线。公共信息读取失败记为 unknown，不猜版本，也不以未知信息阻止不相关产物。
 3. **beta 允许部分平台。** 只对本次选择的产物准备/冻结/测试，但仍核对它们的 manifest 和依赖基线，说明其他平台未进入本批次。beta 不新增远端发布授权。
 4. **正式发布重新核对本次范围。** 不能把一个旧平台 beta 搭配新 CLI 静默转正。选中平台没有当前 base 的候选、版本落后于最新源码目标或固定 pin 不一致时，先准备新号、提交最新输入并冻结，再进入原样 promotion；已冻结包不改号、不重建。新候选有自己的试用；只有仓库 owner 明确豁免才可提前转正，记录授权但不倒填 trial。不得为了“让旧插件可下载”补发旧 CLI 来掩盖基线错配。
@@ -23,7 +23,7 @@ npm run audit:release-versions -- --phase release --cli-base <target-cli> --arti
 
 ## 版本与准备 owner
 
-- CLI/Core/Client 同步三段版本，按当前已知版本高水位递增第三段；更新准确依赖、lockfile，以及 CLI 基线涉及的 adapter manifests。
+- CLI/Core 同步三段版本，按当前已知版本高水位递增第三段；更新准确依赖、lockfile，以及 CLI 基线涉及的 adapter manifests。
 - 单独 Codex/DSH/OpenCode/OpenClaw/Cindy 只升该 family 的第四段，保留所选 CLI base。CLI 基线更新不授权打包/发布未选中的 adapter。
 - 本地 CLI 源码领先于已发布版本时，adapter-only 准备使用 `beta:prepare -- --artifacts <family> --cli-base <已核实的公开CLI版本>`；仅按该 base 分配所选 adapter 的新号，不修改本地 CLI 或其他 adapter。
 - DSH 沿既有正式映射 A.B.C.N → npm A.B.C-rc.N；rc.N 是四段到 npm 的编码，测试与正式相同，不新增 -beta 版本线。
@@ -84,11 +84,11 @@ npm run publish:dsh-plugin -- --candidate <冻结目录> --publish
 npm run publish:dsh-plugin -- --candidate <冻结目录> --publish --trial-waiver "<本次明确授权记录>"
 ~~~
 
-CLI 的 `verify:release` / `publish:release` 同样接受 `--trial-waiver "<本次明确授权记录>"`，记录在候选旁的 `trial-waiver-cli.json`，绑定 candidate hash 与 Core/Client/CLI 三个 npm 坐标；不授权任何插件发布。DSH 的显式豁免保存在 `trial-waiver-dsh.json`，绑定 candidate hash 与该 npm 坐标。两者都不修改、伪造或倒填 `trial.json`，未传豁免时仍要求完整七天试用。
+CLI 的 `verify:release` / `publish:release` 同样接受 `--trial-waiver "<本次明确授权记录>"`，记录在候选旁的 `trial-waiver-cli.json`，绑定 candidate hash 与 Core/CLI 两个 npm 坐标；不授权任何插件发布。DSH 的显式豁免保存在 `trial-waiver-dsh.json`，绑定 candidate hash 与该 npm 坐标。两者都不修改、伪造或倒填 `trial.json`，未传豁免时仍要求完整七天试用。
 
 CLI 补丁允许只选择 `--artifacts cli`：源码中 adapter 基线按既有规则同步，不代表发布这些插件。已发布插件保留原号；运行兼容性按实际协议和依赖检查，不能只靠前三段不同就判为不兼容。PATH 调用的宿主需更新对应 CLI 安装并重新建立进程；固定 CLI/Core pin 的旧入口继续使用原版本，不因此自动获得补丁。
 
-CLI owner 依次上传 Core→Client→CLI 的原 tgz，核验真实下载和 latest 后才 push 源码；DSH owner 上传所选冻结 tgz 并核验下载，随后按 release-dsh-plugin 完成源码/tag及授权交付。一个组合清单不意味着 CLI 发布入口自动发布 DSH。
+CLI owner 依次上传 Core→CLI 的原 tgz，核验真实下载和 latest 后才 push 源码；DSH owner 上传所选冻结 tgz 并核验下载，随后按 release-dsh-plugin 完成源码/tag及授权交付。一个组合清单不意味着 CLI 发布入口自动发布 DSH。
 
 Codex 发布冻结 marketplace 完整 Git tree；Cindy 交独立 artifact 仓库 owner；OpenCode/OpenClaw 保留其既有 tag namespace。artifact commit 可以与 source commit 不同，但 tree/hash不能变。不得移动已有 tag，也不得把 raw source main冒充合成插件。
 

@@ -211,8 +211,8 @@ The GitHub Pages product deck lives in [docs/index.html](docs/index.html) and is
 - Closeout workflows that keep tasks, notes, and decisions aligned
 - Planning surfaces that can stay enabled, be turned off, or be routed through a custom planning skill
 - Adapter surfaces that let the same workflow shape land in different agent hosts
-- A persistent, host-neutral session daemon and typed Node client that retain
-  workdir and current-plan focus across operations
+- Persistent, host-neutral direct sessions that retain workdir and
+  current-plan focus across operations without a background daemon
 
 ## Why teams use it
 
@@ -281,8 +281,10 @@ Commands entered after that point reuse the session workdir and current plan.
 `plan create`, `plan resume [planId]`, and `plan leave` change current-plan
 focus; ordinary `plan` and `task` commands do not need a repeated task name or
 plan file. Use `search --dir <other-dir> <query>` for one cross-directory
-lookup without changing the session workdir. Closing the terminal disconnects
-the live client but retains session metadata for seven days.
+lookup without changing the session workdir. The session executes inside that
+CLI process itself: there is no daemon to start, discover, or restart. Closing
+the terminal ends the live session, and the retained session metadata is kept
+for seven days so a later `session open` can resume it.
 
 `claw plan create` now routes through seed-plan templates. Explicit `--template` wins first; otherwise claw uses `defaultPlanTemplate` from `.claw/project.json` or `.claw/project-override.json`, then falls back to the built-in `default` template. Planning-enabled projects start in `process.discussing` with a planning task plus an activation bridge task; planning-disabled projects start directly in `process.active`. The planning task analyzes the request and uses the configured planning skill to fill executable tasks. `claw search --query "<topic>"` remains an optional command hint, not a mandatory planning step.
 
@@ -432,9 +434,6 @@ DSH subagent; the model only drives the single `claw_run` tool. See
 
 - `@veewo/claw`
   - CLI entrypoint for running the `.claw` workflow in a project
-- `@veewo/claw-client`
-  - lightweight typed Node API for the same persistent session daemon used by
-    `claw session open`
 - `@veewo/claw-core`
   - shared workflow primitives for project config, planning, search, truth ingestion, and retention
 - `@claw-kit/standard-adapter`
@@ -451,6 +450,9 @@ DSH subagent; the model only drives the single `claw_run` tool. See
   - OpenClaw-facing adapter layer built on the same core workflow model
 - `@claw-kit/opencode-adapter`
   - OpenCode-facing adapter that lands the workflow in OpenCode through a TypeScript plugin, a plugin shim, agent definitions, and skills
+
+npm publication order is `@veewo/claw-core`, then `@veewo/claw`. The removed
+`@veewo/claw-client` was retired with the shared session daemon.
 
 ## `project.json` at a glance
 

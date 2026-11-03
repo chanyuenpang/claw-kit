@@ -26,7 +26,7 @@ function fixture(t: { after: (fn: () => void) => void }) {
   const cwd = path.join(root, "project");
   fs.mkdirSync(cwd);
   initProject({ cwd, projectName: "Scope recovery", planning: false });
-  const registry = new SessionRegistryV2(path.join(root, "daemon"));
+  const registry = new SessionRegistryV2(path.join(root, "session-runtime"));
   const executor = new SessionCommandExecutor(registry);
   const identity = { agentSessionId: "same-agent", workdir: cwd, client: { kind: "adapter" as const, host: "dsh" } };
   const execute = (operation: string, input: Record<string, unknown> = {}) => executor.execute(identity, { operation, input });
@@ -140,7 +140,7 @@ function oneOffContext(cwd: string, agentSessionId: string) {
     cwd, encoding: "utf8", windowsHide: true,
     env: { ...process.env, CLAW_HOST: "dsh", CLAW_SESSION_ID: agentSessionId,
       CODEX_THREAD_ID: "", CODEX_SESSION_ID: "", CLAW_GUIDANCE_CONFIG: "",
-      CLAW_SESSION_DAEMON_RUNTIME_DIR: path.join(cwd, "..", "daemon"),
+      CLAW_SESSION_DAEMON_RUNTIME_DIR: path.join(cwd, "..", "session-runtime"),
       CLAW_EMBEDDING_WARMUP_DISABLE_LAUNCH: "1" },
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);

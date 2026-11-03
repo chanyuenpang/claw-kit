@@ -3,8 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { startSessionDaemon } from "../dist/session-daemon.js";
-import { ClawClient } from "@veewo/claw-client";
+import { openPersistentSession, type PersistentClawSession } from "../dist/session-command.js";
 import {
   SESSION_RECORD_TTL_MS,
   SessionRegistryV2,
@@ -21,7 +20,11 @@ after(() => {
   for (const root of temporaryRoots) fs.rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 });
 
-test("daemon startup and unrelated opens leave historical records untouched, including missing workspaces", async (t) => {
+function transportMode(session: PersistentClawSession): string | undefined {
+  return (session.status() as { transport?: { mode?: string } }).transport?.mode;
+}
+
+test("session startup and unrelated opens leave historical records untouched, including missing workspaces", async (t) => {
   const root = fixture("missing-workspace");
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const runtimeRoot = path.join(root, "runtime");
@@ -40,26 +43,26 @@ test("daemon startup and unrelated opens leave historical records untouched, inc
   const expiredOriginal = fs.readFileSync(registry.recordPath(expired.identity.sessionKeyHash), "utf8");
   const original = fs.readFileSync(registry.recordPath(stale.identity.sessionKeyHash), "utf8");
   fs.rmdirSync(missing);
-  const daemon = await startSessionDaemon({ runtimeRoot, idleTtlMs: 0 });
+  // Opening an unrelated session must not rewrite another retained record or
+  // recover a missing workspace.
+  assert.deepEqual(registry.read(healthy.identity.sessionKeyHash), healthy.record);
+  const session = await openPersistentSession({ runtimeRoot, workdir: valid, agentSessionId: "healthy" });
   try {
-    assert.ok(daemon.state.port > 0);
     assert.equal(fs.readFileSync(registry.recordPath(stale.identity.sessionKeyHash), "utf8"), original);
-    assert.deepEqual(registry.read(healthy.identity.sessionKeyHash), healthy.record);
-    const client = new ClawClient({ runtimeRoot });
-    const session = await client.open("healthy", valid);
-    try {
-      assert.equal(registry.read(healthy.identity.sessionKeyHash).state, "live");
-      await assert.rejects(client.open("stale", missing), { code: "SESSION_IDENTITY_INVALID" });
-      assert.ok(await session.status());
-      assert.equal(fs.readFileSync(registry.recordPath(expired.identity.sessionKeyHash), "utf8"), expiredOriginal);
-    } finally { await session.close(); }
-    fs.mkdirSync(missing);
-    const restored = await client.open("stale", missing);
-    await restored.close();
-  } finally { await daemon.close(); }
+    assert.equal(registry.read(healthy.identity.sessionKeyHash).state, "live");
+    await assert.rejects(
+      () => openPersistentSession({ runtimeRoot, workdir: missing, agentSessionId: "stale" }),
+      { code: "SESSION_IDENTITY_INVALID" },
+    );
+    assert.equal(transportMode(session), "direct");
+    assert.equal(fs.readFileSync(registry.recordPath(expired.identity.sessionKeyHash), "utf8"), expiredOriginal);
+  } finally { await session.close(); }
+  fs.mkdirSync(missing);
+  const restored = await openPersistentSession({ runtimeRoot, workdir: missing, agentSessionId: "stale" });
+  await restored.close();
 });
 
-test("daemon ready and new-session handshake never wait for a historical session execution queue", async () => {
+test("opening a new session never waits for a historical session execution queue", async () => {
   const runtimeRoot = fixture("blocked-history-runtime");
   const workdir = fixture("blocked-history-workspace");
   const registry = new SessionRegistryV2(runtimeRoot);
@@ -74,28 +77,27 @@ test("daemon ready and new-session handshake never wait for a historical session
     await gate;
   });
   await acquired;
-  const starting = startSessionDaemon({ runtimeRoot, idleTtlMs: 0 });
+  const starting = openPersistentSession({ runtimeRoot, workdir, agentSessionId: "new-agent" });
   let timer: NodeJS.Timeout | undefined;
   try {
     await Promise.race([
       (async () => {
-        const daemon = await starting;
-        const session = await new ClawClient({ runtimeRoot }).open("new-agent", workdir);
+        const session = await starting;
         try {
-          assert.ok(await session.status());
+          assert.equal(transportMode(session), "direct");
           assert.equal(fs.readFileSync(registry.recordPath(opened.identity.sessionKeyHash), "utf8"), original);
         } finally { await session.close(); }
-        assert.ok(daemon.state.port > 0);
       })(),
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("Handshake waited for historical execution")), 2_000);
+        timer = setTimeout(() => reject(new Error("Session open waited for historical execution")), 2_000);
       }),
     ]);
   } finally {
     if (timer) clearTimeout(timer);
     release();
     await held;
-    await (await starting).close();
+    const session = await starting.catch(() => undefined);
+    if (session) await session.close();
   }
 });
 

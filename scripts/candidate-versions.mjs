@@ -12,7 +12,7 @@ const adapterFiles = {
   openclaw: ["packages/openclaw-adapter/package.json", "packages/openclaw-adapter/openclaw.plugin.json"],
   cindy: ["packages/cindy-adapter/package.json", "packages/cindy-adapter/plugin/ghost.json"],
 };
-const cliFiles = ["package.json", "packages/core/package.json", "packages/client/package.json", "packages/cli/package.json"];
+const cliFiles = ["package.json", "packages/core/package.json", "packages/cli/package.json"];
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const assert = (value, message) => { if (!value) throw new Error(message); };
 const read = async file => JSON.parse(await fs.readFile(file, "utf8"));
@@ -175,7 +175,6 @@ export async function prepareCandidateVersions({ sourceRoot, artifacts = ["cli",
       for (const file of cliFiles) await update(file, data => {
         data.version = base;
         if (data.dependencies?.["@veewo/claw-core"]) data.dependencies["@veewo/claw-core"] = base;
-        if (data.dependencies?.["@veewo/claw-client"]) data.dependencies["@veewo/claw-client"] = base;
         if (data.peerDependencies?.["@veewo/claw"]) data.peerDependencies["@veewo/claw"] = base;
       });
     }

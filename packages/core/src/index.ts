@@ -21,6 +21,7 @@ export * from "./requirements-gate.js";
 export * from "./runtime-directory.js";
 export * from "./role-preferences.js";
 export * from "./session-bindings.js";
+export * from "./session-contract.js";
 export * from "./session-workflows.js";
 export * from "./skill-names.js";
 export * from "./task-layout-migration.js";

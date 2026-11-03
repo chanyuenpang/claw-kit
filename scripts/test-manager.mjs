@@ -8,7 +8,6 @@ const nodeStep = (...args) => ({ kind: "node", args });
 const build = (workspace) => npmStep("run", "build", "-w", workspace);
 const workspaceTest = (workspace) => npmStep("run", "test", "-w", workspace);
 const coreBuild = build("@veewo/claw-core");
-const clientBuild = build("@veewo/claw-client");
 const cliBuild = build("@veewo/claw");
 const cliTestCompile = nodeStep("./node_modules/typescript/bin/tsc", "-p", "./packages/cli/tsconfig.test.json");
 const scopeRecoveryTest = nodeStep("--test", "./packages/cli/dist-test/session-project-scope-recovery.test.js");
@@ -18,7 +17,6 @@ const dshExecutionTest = nodeStep("--test", "./packages/cli/dist-test/dsh-finali
 function sessionTest(file, extraSteps = []) {
   return [
     coreBuild,
-    clientBuild,
     cliBuild,
     cliTestCompile,
     ...extraSteps,
@@ -41,7 +39,6 @@ function cliDomainTest(domain) {
   if (!testFile) throw new Error(`Unknown CLI test domain: ${domain}`);
   return [
     coreBuild,
-    clientBuild,
     cliBuild,
     cliTestCompile,
     nodeStep("--test", `./packages/cli/dist-test/${testFile}.js`),
@@ -81,9 +78,9 @@ export const TEST_DOMAINS = {
     description: "Typed command service, implicit current-plan targeting, and command envelopes",
     steps: sessionTest("session-commands", [scopeRecoveryTest, guardedReferenceTest]),
   },
-  "session-protocol": {
-    description: "Authenticated client/daemon protocol, serialization, reconnect, and lifecycle",
-    steps: sessionTest("session-daemon", [workspaceTest("@veewo/claw-client")]),
+  "session-transport": {
+    description: "In-process direct session transport: open loop, envelopes, serialization, reconnect, and lifecycle",
+    steps: sessionTest("session-transport"),
   },
   "session-terminal": {
     description: "Persistent terminal open/close, line parsing, and current-plan restoration",
@@ -191,7 +188,6 @@ const FULL_STEPS = [
   npmStep("run", "test:release-candidate"),
   npmStep("run", "build"),
   workspaceTest("@veewo/claw-core"),
-  workspaceTest("@veewo/claw-client"),
   workspaceTest("@veewo/claw"),
   workspaceTest("@claw-kit/openclaw-adapter"),
   workspaceTest("@veewo/dsh-claw-kit"),
@@ -232,9 +228,9 @@ const rules = [
   [["session-state"], /^packages\/cli\/test\/session-state\.test\.ts$/],
   [["session-focus"], /^packages\/cli\/test\/session-focus\.test\.ts$/],
   [["session-commands"], /^packages\/cli\/(?:src\/command-service|test\/session-commands\.test)\.ts$/],
-  [["session-commands", "session-protocol"], /^packages\/client\/src\/protocol\.ts$/],
-  [["session-protocol"], /^packages\/client\/(?:src\/(?:index|runtime)|test\/client\.test)\.ts$/],
-  [["session-protocol"], /^packages\/cli\/(?:src\/session-daemon(?:-entry)?|test\/session-daemon\.test)\.ts$/],
+  [["session-commands", "session-transport"], /^packages\/core\/src\/session-contract\.ts$/],
+  [["session-transport"], /^packages\/cli\/src\/session-command\.ts$/],
+  [["session-transport"], /^packages\/cli\/test\/session-transport\.test\.ts$/],
   [["session-terminal"], /^packages\/cli\/test\/session-terminal\.test\.ts$/],
   [["cli-workflow"], /^packages\/cli\/test\/cli-workflow\.test\.ts$/],
   [["cli-session-scope"], /^packages\/cli\/test\/cli-session-scope\.test\.ts$/],

@@ -101,12 +101,8 @@ import { openCodeFinalizerExecutionCommand } from "./opencode-finalizer-executio
 import { reserveDshFinalizerExecutionCommand, markDshFinalizerDeliveryCommand, inspectDshFinalizerExecutionsCommand, releaseDshFinalizerExecutionCommand } from "./dsh-finalizer-execution.js";
 import { consumeBufferedHookInput } from "./knowledge-hook-preflight.js";
 import { isNativeKnowledgeFinalizationHost, resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
-import {
-  ClawClient,
-  ClawSessionError,
-  type ClawSession,
-  type ClawSessionCommand,
-} from "@veewo/claw-client";
+import { type ClawSessionCommand } from "@veewo/claw-core";
+import { openPersistentSession } from "./session-command.js";
 
 const CLI_VERSION = readCliVersion();
 
@@ -1019,16 +1015,16 @@ async function runPersistentSession(
   effectiveHost: ClawHost | undefined,
   receiptOnly = false,
 ): Promise<void> {
-  const opened = await new ClawClient({
+  const previousPersistentSession = process.env.CLAW_PERSISTENT_SESSION;
+  process.env.CLAW_PERSISTENT_SESSION = "1";
+  const opened = await openPersistentSession({
+    workdir,
+    agentSessionId,
     receiptOnly,
     clientKind: "terminal",
     ...(effectiveHost ? { host: effectiveHost } : {}),
-  }).open(agentSessionId, path.resolve(workdir));
-  writeSessionOutput({
-    ok: true,
-    command: "session.open",
-    ...(opened.openResult as Record<string, unknown>),
   });
+  writeSessionOutput({ ok: true, command: "session.open", ...opened.openResult });
   const readline = createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -1051,27 +1047,24 @@ async function runPersistentSession(
           return;
         }
         if (command.kind === "status") {
-          writeSessionOutput({ ok: true, command: "session.status", ...(await opened.status() as object) });
+          writeSessionOutput({ ok: true, command: "session.status", ...opened.status() });
         } else {
-          const envelope = await opened.commandEnvelope(command.request);
-          writeSessionOutput({
-            ok: true,
-            command: command.request.operation,
-            ...envelope,
-          });
+          const envelope = await opened.execute(command.request);
+          writeSessionOutput({ ok: true, command: command.request.operation, ...envelope });
         }
       } catch (error) {
-        writeSessionOutput({ ok: false, error: serializeSessionError(error) });
-        if (error instanceof ClawSessionError && error.code === "SESSION_CONNECTION_LOST") return;
+        writeSessionOutput({ ok: false, error: serializeCommandFailure(error, "unknown", "SESSION_COMMAND_FAILED") });
       }
       if (process.stdin.isTTY && process.stdout.isTTY) readline.prompt();
     }
   } finally {
     readline.close();
+    if (previousPersistentSession === undefined) delete process.env.CLAW_PERSISTENT_SESSION;
+    else process.env.CLAW_PERSISTENT_SESSION = previousPersistentSession;
     try {
       await opened.close();
     } catch {
-      // EOF is a soft close; retained state survives a lost daemon connection.
+      // EOF is a soft close; retained state survives a dead session process.
     }
   }
 }
@@ -1326,25 +1319,6 @@ function assertSessionTokensConsumed(tokens: string[], line: string): void {
 
 function writeSessionOutput(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value)}\n`);
-}
-
-function serializeSessionError(error: unknown): Record<string, unknown> {
-  if (error instanceof ClawSessionError) {
-    return {
-      code: error.code,
-      message: error.message,
-      retryable: error.retryable,
-      outcome: error.outcome,
-      ...(error.phase ? { phase: error.phase } : {}),
-      ...(error.effect ? { effect: error.effect } : {}),
-      ...(error.recoveryCommand ? { recoveryCommand: error.recoveryCommand } : {}),
-      ...(error.details ? { details: error.details } : {}),
-    };
-  }
-  if (error instanceof ClawError) {
-    return { code: error.code, message: error.message, ...(error.execution ?? {}), ...(error.details ? { details: error.details } : {}) };
-  }
-  return { code: "SESSION_COMMAND_FAILED", message: error instanceof Error ? error.message : String(error) };
 }
 
 /** Internal adapter-owned query: the parent identity is injected by the Host. */

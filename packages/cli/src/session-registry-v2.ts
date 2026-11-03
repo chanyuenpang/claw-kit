@@ -248,8 +248,8 @@ export class SessionRegistryV2 {
     return path.join(this.sessionDirectory(sessionKeyHash), "session.json");
   }
 
-  withExecution<T>(sessionKeyHash: string, action: () => Promise<T>): Promise<T> {
-    return withSerializedQueue(path.join(this.sessionDirectory(sessionKeyHash), "execution.queue.json"), action);
+  withExecution<T>(sessionKeyHash: string, action: () => Promise<T>, options?: { timeoutMs?: number }): Promise<T> {
+    return withSerializedQueue(path.join(this.sessionDirectory(sessionKeyHash), "execution.queue.json"), action, options);
   }
 
   commandQueuePath(sessionKeyHash: string): string {

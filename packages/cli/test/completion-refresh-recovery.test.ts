@@ -1,10 +1,9 @@
 import test, { before, after } from "node:test";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { ClawClient } from "@veewo/claw-client";
 import { initProject, writePlan, editPlan, showPlan, resolveProjectContext, listKnowledgeFinalizationJobs,
   readKnowledgeFinalizationJob } from "@veewo/claw-core";
-import { startSessionDaemon } from "../dist/session-daemon.js";
+import { openPersistentSession } from "../dist/session-command.js";
 import { registerReportCollector } from "../dist/report-collector-registry.js";
 import { reconcileCompletionRefresh } from "../dist/completion-refresh-recovery.js";
 import { runCompletionRefresh } from "../dist/completion-refresh.js";
@@ -40,7 +39,7 @@ function project(name: string) {
   return root;
 }
 
-for (const embeddingEnabled of [false, true]) test(`daemon finalization preserves external documents with embedding enabled=${embeddingEnabled}`, async () => {
+for (const embeddingEnabled of [false, true]) test(`persistent session finalization preserves external documents with embedding enabled=${embeddingEnabled}`, async () => {
   const root = project("refresh space & args " + embeddingEnabled);
   const configPath = path.join(root, ".claw", "project.json");
   const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
@@ -54,12 +53,11 @@ for (const embeddingEnabled of [false, true]) test(`daemon finalization preserve
   const collector = path.join(root, "collector.cjs");
   fs.writeFileSync(collector, 'const fs = require("node:fs"); const r = JSON.parse(fs.readFileSync(0, "utf8")); fs.writeFileSync(r.stagingReportPath, "evidence");');
   registerReportCollector(root, { schemaVersion: 1, contractVersion: 1, host: "cindy", collectorVersion: "fixture", executable: process.execPath, args: [collector] });
-  const runtimeRoot = createFixture("refresh-daemon-runtime");
-  const daemon = await startSessionDaemon({ runtimeRoot, idleTtlMs: 0 });
-  const session = await new ClawClient({ runtimeRoot, host: "cindy", clientKind: "adapter" }).open("refresh-agent", root);
+  const runtimeRoot = createFixture("refresh-session-runtime");
+  const session = await openPersistentSession({ runtimeRoot, workdir: root, agentSessionId: "refresh-agent", host: "cindy", clientKind: "adapter" });
   try {
-    await session.command({ operation: "plan.create", input: { taskName: "refresh-plan", title: "Refresh plan" } });
-    await session.command({ operation: "plan.done", input: { retrospectiveSummary: "Complete" } });
+    await session.execute({ operation: "plan.create", input: { taskName: "refresh-plan", title: "Refresh plan" } });
+    await session.execute({ operation: "plan.done", input: { retrospectiveSummary: "Complete" } });
     // Canonical response precedes maintenance; wait for the real recovery worker.
     await waitForCondition(() => receipts(root).length === 1, 30_000);
     await settled(receipts(root)[0]!);
@@ -67,12 +65,12 @@ for (const embeddingEnabled of [false, true]) test(`daemon finalization preserve
     const jobPath = listKnowledgeFinalizationJobs(resolveProjectContext(root))[0]!;
     const job = readKnowledgeFinalizationJob(jobPath);
     assert.deepEqual(job.docUpdate, { externalDocPaths: ["docs"] });
-    const claim = await session.command({ operation: "knowledge.claim", input: { finalizeId: job.finalizeId } }) as { claimToken: string };
+    const claim = (await session.execute({ operation: "knowledge.claim", input: { finalizeId: job.finalizeId } })).output as { claimToken: string };
     fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "Knowledge deposited after plan refresh.");
     // Simulate completion of the unchanged writer assignment, not merely dispatch.
     fs.writeFileSync(handbook, "Updated external documentation after canonical knowledge.");
     const input = { finalizeId: job.finalizeId, claimToken: claim.claimToken, status: "succeeded" as const, result: "Deposited" };
-    await session.command({ operation: "knowledge.done", input });
+    await session.execute({ operation: "knowledge.done", input });
     const knowledgeReceipt = path.join(receiptDir(root), createHash("sha256").update("knowledge:" + job.finalizeId).digest("hex") + ".json");
     const status = await settled(knowledgeReceipt);
     assert.deepEqual(status.operations, embeddingEnabled ? ["memory.reindex.project"] : []);
@@ -82,7 +80,7 @@ for (const embeddingEnabled of [false, true]) test(`daemon finalization preserve
     const before = fs.readFileSync(jobPath, "utf8");
     // Simulate lost intent after the canonical successful commit, without replaying assignments.
     fs.unlinkSync(knowledgeReceipt);
-    const repeated = await session.command({ operation: "knowledge.done", input }) as { alreadyDone: boolean };
+    const repeated = (await session.execute({ operation: "knowledge.done", input })).output as { alreadyDone: boolean };
     assert.equal(repeated.alreadyDone, true);
     await settled(knowledgeReceipt);
     await idle(root);
@@ -91,7 +89,7 @@ for (const embeddingEnabled of [false, true]) test(`daemon finalization preserve
     fs.rmSync(path.join(root, ".claw", "logs", "completion-refresh"), { recursive: true, force: true });
     assert.deepEqual(reconcileCompletionRefresh(root), []);
     assert.equal(fs.readFileSync(knowledgeReceipt, "utf8"), receiptBefore, "log cleanup does not erase terminal acknowledgement");
-  } finally { await session.close(); await daemon.close(); }
+  } finally { await session.close(); }
 });
 
 test("one-shot mutation replies survive background recovery with captured stdout and open stdin", async () => {

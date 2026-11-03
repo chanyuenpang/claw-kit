@@ -4,6 +4,8 @@
 
 It gives agents and developers a concrete way to plan work, recall project knowledge, deposit truth and ADR notes, and close rounds out cleanly instead of leaving project state scattered across transient chats.
 
+`@veewo/claw` and `@veewo/claw-core` share one three-segment version line; npm publishes Core first, then the CLI. There is no `@veewo/claw-client` package.
+
 ## What the CLI is for
 
 - initialize and normalize the `.claw` project surface
@@ -78,9 +80,11 @@ claw session open <dir> <agent-session-id>
 ```
 
 The workdir is immutable for the lifetime of that session. Opening another
-directory closes the prior live connection and opens the composite identity
+directory opens a separate session for the composite identity
 `(canonical workdir, agent session id)`; two directories with the same agent id
-remain isolated.
+remain isolated. The session executes inside this CLI process: there is no
+daemon to start, discover, or restart, and `session status` reports
+`transport: {mode: "direct", pid, startedAt}`.
 
 Inside the terminal, these commands implicitly target `currentPlan`:
 
@@ -108,10 +112,12 @@ Reopen with the exact command returned by the error, then inspect
 update. Legacy session caches are not migrated and canonical plans are never
 deleted by v2 cleanup.
 
-Host adapters remain compatible with the stateless CLI. They can adopt
-`@veewo/claw-client` incrementally once they consume the same structured
-post-commit effects; opening a persistent session does not change existing
-adapter behavior.
+Host adapters remain compatible with the stateless CLI. A persistent session
+is one direct CLI process speaking the same stdio JSONL contract, so opening it
+does not add a background service; adapters keep consuming the same structured
+`output`, `hostActions`, `postCommitEffects`, and `knowledgeDispatch` envelope.
+Programmatic callers use that stdio contract rather than a separate Node client
+package.
 
 Codex startup workflow should rely on the session hook or startup recovery path instead of treating any extra manual recovery step as required after plan creation.
 

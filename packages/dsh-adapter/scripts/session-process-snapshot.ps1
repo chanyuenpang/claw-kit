@@ -9,7 +9,7 @@ $rows = @(
     $cmd = [string]$p.CommandLine
     $isRunner = $cmd -like '*dsh-subprocess-local*runner.js*'
     $isSession = $cmd -match 'session open (?<workdir>.*?) (?<sid>[^\s]+) --host dsh'
-    $kind = if ($isRunner -and $isSession) { 'runner' } elseif ($isSession -and $cmd -like '*claw*bin.js*') { 'claw' } elseif ($cmd -like '*session-daemon-entry.js*') { 'daemon' } else { $null }
+    $kind = if ($isRunner -and $isSession) { 'runner' } elseif ($isSession -and $cmd -like '*claw*bin.js*') { 'claw' } else { $null }
     if (-not $kind) { continue }
     $workdir = if ($isSession) { $Matches['workdir'].Trim('"') } else { $null }
     $sessionId = if ($isSession) { $Matches['sid'].Trim('"') } else { $null }
@@ -29,7 +29,7 @@ $clawRows = @($rows | Where-Object kind -eq claw)
 $paired = @($clawRows | Where-Object { $runnerPids -contains $_.parentPid })
 $summary = [pscustomobject]@{
   node = $all.Count; runner = $runnerRows.Count; claw = $clawRows.Count
-  paired = $paired.Count; daemon = @($rows | Where-Object kind -eq daemon).Count
+  paired = $paired.Count
   runnerWorkingSetMiB = [math]::Round(($runnerRows | Measure-Object workingSetMiB -Sum).Sum, 1)
   clawWorkingSetMiB = [math]::Round(($clawRows | Measure-Object workingSetMiB -Sum).Sum, 1)
   unmatchedRunnerPids = @($runnerRows | Where-Object { $p = $_.pid; -not @($clawRows | Where-Object parentPid -eq $p).Count } | ForEach-Object pid)

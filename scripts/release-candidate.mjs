@@ -12,7 +12,7 @@ import { exportCodexMarketplace, readCodexPluginSource } from "./codex-plugin-bu
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-export const packageNames = ["@veewo/claw-core", "@veewo/claw-client", "@veewo/claw"];
+export const packageNames = ["@veewo/claw-core", "@veewo/claw"];
 const registry = "https://registry.npmjs.org";
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 const json = async (file) => JSON.parse(await fs.readFile(file, "utf8"));
@@ -124,11 +124,11 @@ export async function packCandidate({ sourceRoot = repoRoot, directory } = {}) {
     npm(["run", "check:skill-sources"], sourceRoot);
     const packages = [], outputs = {};
     if (selected.includes("cli")) {
-      const manifests = await Promise.all(["package.json", "packages/core/package.json", "packages/client/package.json", "packages/cli/package.json"].map(name => json(path.join(sourceRoot, name))));
-      const [, core, client, cli] = manifests;
+      const manifests = await Promise.all(["package.json", "packages/core/package.json", "packages/cli/package.json"].map(name => json(path.join(sourceRoot, name))));
+      const [, core, cli] = manifests;
       assert(version === versions.cli.version && manifests.every(pkg => pkg.version === version), "Prepared CLI versions differ.");
-      assert(core.name === packageNames[0] && client.name === packageNames[1] && cli.name === packageNames[2], "Unexpected package identity.");
-      assert(cli.dependencies?.[packageNames[0]] === version && cli.dependencies?.[packageNames[1]] === version && client.peerDependencies?.[packageNames[2]] === version, "Internal pins differ.");
+      assert(core.name === packageNames[0] && cli.name === packageNames[1], "Unexpected package identity.");
+      assert(cli.dependencies?.[packageNames[0]] === version, "Internal pin differs.");
       await fs.mkdir(path.join(artifacts, "npm"));
       for (const name of packageNames) {
         npm(["run", "build", "-w", name], sourceRoot);

@@ -3,7 +3,6 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const npmExecPath = process.env.npm_execpath;
@@ -13,7 +12,6 @@ const packsDir = path.join(temporaryRoot, "packs");
 const installDir = path.join(temporaryRoot, "install");
 const projectDir = path.join(temporaryRoot, "project");
 const runtimeRoot = path.join(temporaryRoot, "runtime");
-process.env.CLAW_SESSION_DAEMON_IDLE_TTL_MS = "100";
 fs.mkdirSync(packsDir);
 fs.mkdirSync(installDir);
 fs.mkdirSync(projectDir);
@@ -34,67 +32,53 @@ function pack(workspace) {
 
 try {
   const core = pack("@veewo/claw-core");
-  const client = pack("@veewo/claw-client");
   const cli = pack("@veewo/claw");
-  assert(core && client && cli);
+  assert(core && cli);
   fs.writeFileSync(path.join(installDir, "package.json"), JSON.stringify({
     private: true,
     type: "module",
     dependencies: {
       "@veewo/claw-core": `file:${path.join(packsDir, core)}`,
-      "@veewo/claw-client": `file:${path.join(packsDir, client)}`,
       "@veewo/claw": `file:${path.join(packsDir, cli)}`,
     },
   }, null, 2));
   npm(["install", "--ignore-scripts"], installDir);
 
   const cliEntry = path.join(installDir, "node_modules", "@veewo", "claw", "dist", "bin.js");
-  const daemonEntry = path.join(installDir, "node_modules", "@veewo", "claw", "dist", "session-daemon-entry.js");
-  const clientEntry = path.join(installDir, "node_modules", "@veewo", "claw-client", "dist", "index.js");
-  const clientTypes = path.join(installDir, "node_modules", "@veewo", "claw-client", "dist", "index.d.ts");
-  assert(fs.existsSync(clientTypes));
-  assert(fs.existsSync(daemonEntry));
+  assert(fs.existsSync(cliEntry));
+  const cliContents = npm(["pack", "--workspace", "@veewo/claw", "--dry-run", "--json"]);
+  assert(cliContents.includes("dist/session-command.js"), "CLI pack must contain the in-process session command module.");
+  assert(!cliContents.includes("session-daemon-entry"), "CLI pack must not contain the removed session daemon entry.");
   execFileSync(process.execPath, [cliEntry, "init", "--name", "Packaged session", "--planning", "false"], {
     cwd: projectDir,
     stdio: "pipe",
   });
 
-  const { ClawClient } = await import(pathToFileURL(clientEntry).href);
-  const session = await new ClawClient({
-    runtimeRoot,
-    daemonEntryPath: daemonEntry,
-    startupTimeoutMs: 10_000,
-  }).open("packaged-agent", projectDir);
-  await session.command({
-    operation: "plan.create",
-    input: { taskName: "packaged-plan", title: "Packaged plan", goalText: "Verify installed packages" },
-  });
-  const shown = await session.command({ operation: "plan.show", input: { simple: true } });
-  assert.equal(shown.goal.text, "Verify installed packages");
-  await session.close();
-
   const terminal = execFileSync(
     process.execPath,
-    [cliEntry, "session", "open", projectDir, "packaged-agent"],
+    [cliEntry, "session", "open", projectDir, "packaged-agent", "--host", "cindy"],
     {
       cwd: projectDir,
-      env: {
-        ...process.env,
-        CLAW_SESSION_DAEMON_RUNTIME_DIR: runtimeRoot,
-        CLAW_SESSION_DAEMON_IDLE_TTL_MS: "100",
-      },
-      input: "plan show --simple\nsession close\n",
+      env: { ...process.env, CLAW_SESSION_DAEMON_RUNTIME_DIR: runtimeRoot },
+      input: [
+        'plan create "Packaged plan" --goal "Verify installed packages"',
+        "plan show --simple",
+        "session close",
+        "",
+      ].join("\n"),
       encoding: "utf-8",
     },
   );
   assert.match(terminal, /"command":"session\.open"/);
-  assert.match(terminal, /"status":"process\.active"/);
+  assert.match(terminal, /"transport":"direct"/);
+  assert.match(terminal, /"text":"Verify installed packages"/);
+  assert.match(terminal, /"command":"plan\.create"/);
+  assert.equal(fs.existsSync(path.join(runtimeRoot, "daemon", "state.json")), false);
   console.log(JSON.stringify({
     ok: true,
-    installedFromTarballs: ["@veewo/claw-core", "@veewo/claw-client", "@veewo/claw"],
-    sdk: true,
-    daemon: true,
+    installedFromTarballs: ["@veewo/claw-core", "@veewo/claw"],
     terminal: true,
+    transport: "direct",
   }, null, 2));
 } finally {
   await new Promise((resolve) => setTimeout(resolve, 250));

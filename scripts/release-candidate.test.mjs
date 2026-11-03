@@ -145,10 +145,10 @@ test("real npm packing and local installation preserve candidate bytes without a
   }
   const { version } = JSON.parse(await fs.readFile(path.join(repo, "package.json")));
   const noop = 'node -e ""';
-  await write(path.join(root, "package.json"), { name: "beta-fixture", private: true, version, workspaces: ["packages/core", "packages/client", "packages/cli", "packages/dsh-adapter"], scripts: { "check:template-versions": noop, "check:skill-sources": noop } });
+  await write(path.join(root, "package.json"), { name: "beta-fixture", private: true, version, workspaces: ["packages/core", "packages/cli", "packages/dsh-adapter"], scripts: { "check:template-versions": noop, "check:skill-sources": noop } });
   await write(path.join(root, ".gitignore"), "dist/\nnode_modules/\n");
-  for (const [index, folder] of ["core", "client", "cli"].entries()) {
-    await write(path.join(root, "packages", folder, "package.json"), { name: packageNames[index], version, scripts: { build: noop }, ...(folder === "client" ? { peerDependencies: { "@veewo/claw": version }, peerDependenciesMeta: { "@veewo/claw": { optional: true } } } : {}), ...(folder === "cli" ? { bin: { claw: "dist/bin.js" }, dependencies: { "@veewo/claw-core": version, "@veewo/claw-client": version } } : {}) });
+  for (const [index, folder] of ["core", "cli"].entries()) {
+    await write(path.join(root, "packages", folder, "package.json"), { name: packageNames[index], version, scripts: { build: noop }, ...(folder === "cli" ? { bin: { claw: "dist/bin.js" }, dependencies: { "@veewo/claw-core": version } } : {}) });
     if (folder === "cli") await write(path.join(root, "packages", folder, "dist", "bin.js"), `#!/usr/bin/env node\nconsole.log(${JSON.stringify(version)});\n`);
   }
   const dshPath = path.join(root, "packages/dsh-adapter/package.json");

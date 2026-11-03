@@ -106,9 +106,9 @@ test("search and index refresh do not hold the session execution queue", async (
   const executor = new SessionCommandExecutor(registry);
   const identity = { agentSessionId: "agent-search-queue", workdir: projectRoot, client: { kind: "adapter" as const, host: "dsh" } };
   const previousMock = process.env.CLAW_EMBEDDING_MOCK;
-  const previousDaemon = process.env.CLAW_IN_SESSION_DAEMON;
+  const previousPersistent = process.env.CLAW_PERSISTENT_SESSION;
   process.env.CLAW_EMBEDDING_MOCK = "1";
-  process.env.CLAW_IN_SESSION_DAEMON = "1";
+  process.env.CLAW_PERSISTENT_SESSION = "1";
   try {
     const unavailable = await executor.execute(identity, { operation: "search", input: { query: "setup" } });
     assert.deepEqual((unavailable.output as { results: unknown[] }).results, []);
@@ -132,8 +132,8 @@ test("search and index refresh do not hold the session execution queue", async (
   } finally {
     if (previousMock === undefined) delete process.env.CLAW_EMBEDDING_MOCK;
     else process.env.CLAW_EMBEDDING_MOCK = previousMock;
-    if (previousDaemon === undefined) delete process.env.CLAW_IN_SESSION_DAEMON;
-    else process.env.CLAW_IN_SESSION_DAEMON = previousDaemon;
+    if (previousPersistent === undefined) delete process.env.CLAW_PERSISTENT_SESSION;
+    else process.env.CLAW_PERSISTENT_SESSION = previousPersistent;
   }
 });
 
@@ -254,25 +254,25 @@ test("creating a root plan atomically leaves the unfinished current plan", async
   }
 });
 
-test("daemon and one-shot executors recover the same focused session", async () => {
+test("persistent and one-shot executors recover the same focused session", async () => {
   const runtimeRoot = fixture("shared-runtime");
   const projectRoot = fixture("shared-project");
   initProject({ cwd: projectRoot, projectName: "Shared Command", planning: false });
   const identity = { agentSessionId: "shared-session", workdir: projectRoot, client: { kind: "adapter" as const, host: "dsh" } };
-  const daemon = new SessionCommandExecutor(new SessionRegistryV2(runtimeRoot));
+  const persistent = new SessionCommandExecutor(new SessionRegistryV2(runtimeRoot));
   const baseline = new SessionCommandExecutor(new SessionRegistryV2(runtimeRoot));
-  const created = await daemon.execute(identity, { operation: "plan.create", input: { taskName: "shared", title: "Shared" } });
+  const created = await persistent.execute(identity, { operation: "plan.create", input: { taskName: "shared", title: "Shared" } });
   const recovered = await baseline.execute(identity, { operation: "plan.show", input: { simple: true } });
   assert.equal(created.schemaVersion, 1);
   assert.equal(recovered.schemaVersion, 1);
   assert.equal((recovered.output as { status: string }).status, "process.active");
   await Promise.all([
-    daemon.execute(identity, { operation: "task.add", input: { tasks: [{ title: "From daemon" }] } }),
+    persistent.execute(identity, { operation: "task.add", input: { tasks: [{ title: "From persistent" }] } }),
     baseline.execute(identity, { operation: "task.add", input: { tasks: [{ title: "From baseline" }] } }),
   ]);
   const settled = await baseline.execute(identity, { operation: "plan.show", input: { simple: true } });
   assert.deepEqual((settled.output as { tasks: Array<{ title: string }> }).tasks.map((task) => task.title).sort(),
-    ["From baseline", "From daemon", "Shared"]);
+    ["From baseline", "From persistent", "Shared"]);
 });
 
 test("typed command service rejects unsupported operations without shell evaluation", async () => {

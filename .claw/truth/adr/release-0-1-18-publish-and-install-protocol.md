@@ -14,7 +14,7 @@ The repository also needs one maintainer entry that can execute the accepted rel
 
 ## Decision
 
-本文拥有仓库级 release / install 顺序、来源闸门、direct-`main` 交付与 closeout 条件。`@veewo/claw-core`、`@veewo/claw-client`、`@veewo/claw` 的包身份、依赖关系及 Core → Client → CLI 顺序由 `.claw/truth/adr/publish-claw-npm-package.md` 拥有；本文引用该顺序作为 release protocol 的前置决策，不另设 competing owner。
+本文拥有仓库级 release / install 顺序、来源闸门、direct-`main` 交付与 closeout 条件。`@veewo/claw-core` 与 `@veewo/claw` 的包身份、依赖关系及 Core → CLI 顺序由 `.claw/truth/adr/publish-claw-npm-package.md` 拥有；本文引用该顺序作为 release protocol 的前置决策，不另设 competing owner。
 
 采用以下发布与安装顺序：
 
@@ -22,7 +22,7 @@ The repository also needs one maintainer entry that can execute the accepted rel
 - 先同步远端 `main`，确认发布基线正确，再执行版本 bump
 - 如果同步 `origin/main` 时在 workflow guidance、CLI tests、Codex adapter docs/skills 或 `.claw/truth/` 上发生冲突，合并结果必须同时保留远端更新和本地已经验证过的行为，再继续 release 流程
 - 同步完成后，必须把 merged HEAD 与当前已发布 artifact 基线一起判断；如果 merged HEAD 已经领先于已发布版本，就直接把整条 workspace/package/plugin 版本线推进到下一个正式 release 目标，而不是沿用 merge 前的本地预期版本
-- release version bump must include the complete current packaging surface: root/package-lock metadata, `@veewo/claw-core`, `@veewo/claw-client`, `@veewo/claw`, adapter baseline versions, exact CLI dependency pins on Core and Client, and the Codex plugin manifest version
+- release version bump must include the complete current packaging surface: root/package-lock metadata, `@veewo/claw-core`, `@veewo/claw`, adapter baseline versions, the exact CLI dependency pin on Core, and the Codex plugin manifest version
 - Treat root `package.json.version` as the release authority for every plugin `TEMPLATE.json` and the built-in default template. Run the maintained `npm run sync:template-versions` updater before `npm run sync:shared-skills`, then use `npm run check:template-versions` as the read-only confirmation step.
 - Publishing must never repair stale templates implicitly. `npm run verify:release` and `npm run publish:release` reuse the read-only assertion, report every stale path and expected version, and stop before shared-skill/publish readiness checks; this keeps generated changes reviewable and prevents a subset of adapter copies from becoming a release artifact.
 - If that template compatibility gate creates a pre-release bootstrap cycle in which the currently published CLI cannot load the next-version workspace templates, release development may temporarily link the already-built workspace CLI/core into the global `claw` command. This exception is limited to preparing and validating the release source; after the target is visible in npm, restore the formal registry installation. It never authorizes installing the Codex plugin from unpublished workspace content.
@@ -30,9 +30,9 @@ The repository also needs one maintainer entry that can execute the accepted rel
 - before publishing, commit the release-ready source state so registry artifacts can be traced back to one source commit; the commit should include the version bump, generated plugin metadata, release docs/truth/ADR residue, and release-scoped runtime fixes
 - release verifier 与 `npm run publish:release` 只能在上述 release-ready commit 已推送、且本地 `main` 与 `origin/main` 精确一致后运行；不得先发布 artifact、再补推它的源码基线
 - 发布验证遵循根 `AGENTS.md` 的比例化原则：先按具体改动风险选择 focused checks，再由 `npm run verify:release` / `npm run publish:release` 执行稳定的版本对齐、shared-skill 同步、committed marketplace payload、隔离 template smoke、clean worktree 与 exact `main == origin/main` gate；只有现实回归风险足以支撑成本时，才扩展到完整测试、全部 adapter bundle tests 或额外安装验证
-- CLI/Core/Client npm release now retains its direct-main, clean-worktree, version, package-smoke and publish-order gates without requiring platform artifacts. Cross-artifact marketplace, adapter, shared-skill, bundle, and template consistency is an explicit coordinated `verify:batch-release` / `publish:batch-release` mode.
-- 当发布范围或风险要求检查真实 npm tarball 内容时，分别对 `@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` 运行 `npm pack --dry-run`；不要仅为复制旧发布矩阵而机械运行与本轮风险无关的检查
-- npm 发布保持固定顺序：`@veewo/claw-core`、`@veewo/claw-client`、`@veewo/claw`
+- CLI/Core npm release now retains its direct-main, clean-worktree, version, package-smoke and publish-order gates without requiring platform artifacts. Cross-artifact marketplace, adapter, shared-skill, bundle, and template consistency is an explicit coordinated `verify:batch-release` / `publish:batch-release` mode.
+- 当发布范围或风险要求检查真实 npm tarball 内容时，分别对 `@veewo/claw-core` 与 `@veewo/claw` 运行 `npm pack --dry-run`；不要仅为复制旧发布矩阵而机械运行与本轮风险无关的检查
+- npm 发布保持固定顺序：`@veewo/claw-core`、`@veewo/claw`
 - 在受管环境里，如果宿主机没有可直接调用的 `npm` CLI，也允许通过 bundled node、tar-based packaging 和 registry API 完成真实 publish
 - 发布后的独立用户端 `update` workflow 在 Windows 上继续通过仓库支持的 `npm run install:local-cli` 路径刷新全局 CLI，并通过 official GitHub marketplace 刷新当前 Codex 安装面
 - 如果 publish 刚完成时 `npm view @veewo/claw version` 还没看到新版本，release closeout 以 registry 传播状态为准；待新版本可见后再进入独立 `update` workflow，不把第一次本地安装拿到旧版本误判为 release 回滚
@@ -44,7 +44,7 @@ The repository also needs one maintainer entry that can execute the accepted rel
 - 正式 publish 完成后，release 本身继续直接核对 registry `dist-tags.latest` / `version`、GitHub source/tag、committed marketplace payload 与 clean-worktree 状态；global CLI、active Codex identity、marketplace source/cache 和 restart/new-task loaded locator 属于随后独立 `update` workflow 的完成证据
 - 如果 release round 包含 `workflowGuidance` wording 或 config 变更，release closeout 验证 source config、built `dist/workflow-guidance.config.json`、committed marketplace payload 与 registry package 携带同一合同；随后独立 `update` closeout 再验证 installed global CLI guidance output 与 official Codex plugin cache payload。`0.1.49` 曾在同一次历史 closeout 中验证关键句 `When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.`，不构成当前 release 必须刷新本机安装面的规则
 - 独立 `update` 的 local runtime refresh verification 必须包含实际 Windows shim path、`claw --version`、`npm list -g @veewo/claw --depth=0`，以及证明 protocol repair 不会把 flat config 改回 legacy nested fields 的 repo-local `claw context` smoke check
-- release closeout 的 done 条件不包括本机全局 `claw` CLI 或 installed Codex plugin 刷新；`scripts/publish-release.mjs` 在三个 npm 包 publish 后提示调用 `claw-kit:update`，并明确禁止从未发布的 workspace content 安装
+- release closeout 的 done 条件不包括本机全局 `claw` CLI 或 installed Codex plugin 刷新；`scripts/publish-release.mjs` 在两个 npm 包 publish 后提示调用 `claw-kit:update`，并明确禁止从未发布的 workspace content 安装
 - 仓库维护者入口由本地 `release-claw-kit` router 提供，不进入 published Codex plugin 或 `shared/skills`。它选择 `release-claw-cli` 或一个 platform-specific release skill；本文继续只拥有 CLI/npm release protocol，artifact-family routing 与平台发布边界由 `artifact-specific-plugin-release-ownership.md` 拥有。
 - DSH artifact release 若授权范围明确包含向已知 profile 交付，须先完成发布并确认 registry 中的 exact npm version，再以该已发布版本按 profile 的 owner 写入：非 Electron profile 用 `dsh plugin --profile <name> add @veewo/dsh-claw-kit@<exact-version>`；Electron 独占的 `desktop` profile 拒绝该命令（`profile "desktop" is managed exclusively by the Electron application`），只能用 `plugin_manager` 的 `install_bundle`（或应用内 Plugins 页）写入。Electron-managed profile 的文件不得由 Agent、filesystem tool、script 或 shell 直接修改；出现指名 Electron 的拒绝时应停止重试文件写入。安装只证明磁盘状态，Host 重启及真实 session verification 是单独且需授权的 activation boundary。详细 DSH artifact ownership 与 update contract 归 artifact-specific release Truth 和 host-specific update Truth 管理，canonical 命令见 `packages/dsh-adapter/skills/update/references/desktop-profile-write-boundary.md`。
 - 后续 Codex update 验证必须 identity-aware：只允许 official `claw-kit@claw-kit`，并核对 official repository marketplace source、matching cache、所需 skill payload 与 restart/new-task loaded locator；cache 目录存在或较新但未启用不能作为 update completion 证据
@@ -91,6 +91,11 @@ The repository also needs one maintainer entry that can execute the accepted rel
 
 <!-- state: history -->
 ## Decision evolution
+
+<!-- dated: 2026-11-03 -->
+### Client package removed from the CLI/npm release surface
+
+`@veewo/claw-client` 随本地 session daemon 删除。当前 release 只发布 `@veewo/claw-core` 与 `@veewo/claw`，版本 bump、tarball 检查与 publish 顺序只覆盖这两个包；CLI 精确依赖同版本 Core。更早记录中的 Core → Client → CLI 顺序只描述历史发布面，不再是当前前置决策。
 
 <!-- dated: 2026-09-29 -->
 ### 0.2.40 staged GitHub source release
@@ -145,7 +150,6 @@ The `0.1.87` release was the first recorded use of the narrow workspace-link exc
 - `0.1.52`
 - `0.1.52+codex.20260624215321`
 - `@veewo/claw-core`
-- `@veewo/claw-client`
 - `@veewo/claw`
 - `npm run install:local-cli`
 - `claw --version`

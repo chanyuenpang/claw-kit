@@ -3,13 +3,13 @@
 <!-- state: current -->
 ## 当前行为
 
-- `claw-kit` 发布三个 npm 包：`@veewo/claw-core` 提供核心 `.claw` harness 语义，`@veewo/claw-client` 提供 client API，`@veewo/claw` 提供 CLI 并精确依赖同版本的 Core 与 Client。
-- 截至 2026-09-30，`@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` 均已发布 npm `0.2.41`（`latest`），完成三份真实 tarball 获取；`v0.2.41` GitHub Release 的不可变标签指向提交 `d7c78c9`。这只证明发布完成，不代表本机全局 CLI 或插件已刷新。`0.2.40` 仍仅为独立的 GitHub source checkpoint，未作为 npm 版本发布。
-- CLI release version bump 覆盖 root、lockfile、Core、Client、CLI、各 adapter baseline、内部 `@veewo/claw-core` / `@veewo/claw-client` 依赖和 Codex plugin manifest。`TEMPLATE_DRIVER_VERSION` 是全部内置 `TEMPLATE.json` 与 built-in default template 的版本权威；Codex knowledge-capture runtime 的 CLI 版本跟随 root package。
+- `claw-kit` 发布两个 npm 包：`@veewo/claw-core` 提供核心 `.claw` harness 语义，`@veewo/claw` 提供 CLI 并精确依赖同版本的 Core。原 `@veewo/claw-client` 已随本地 session daemon 删除。
+- 截至 2026-09-30，`@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` 均已发布 npm `0.2.41`（`latest`），完成三份真实 tarball 获取（当时发布面仍包含 Client）；`v0.2.41` GitHub Release 的不可变标签指向提交 `d7c78c9`。这只证明发布完成，不代表本机全局 CLI 或插件已刷新。`0.2.40` 仍仅为独立的 GitHub source checkpoint，未作为 npm 版本发布。
+- CLI release version bump 覆盖 root、lockfile、Core、CLI、各 adapter baseline、内部 `@veewo/claw-core` 依赖和 Codex plugin manifest。`TEMPLATE_DRIVER_VERSION` 是全部内置 `TEMPLATE.json` 与 built-in default template 的版本权威；Codex knowledge-capture runtime 的 CLI 版本跟随 root package。
 - 模板版本维护顺序固定为 `npm run sync:template-versions`、`npm run sync:shared-skills`、`npm run check:template-versions`。`npm run check:template-versions` 是所有内置模板的独立只读发布门禁；`verify:batch-release` 才额外检查模板与平台产物，CLI-only 的 `verify:release` / `publish:release` 不替代此门禁，也不隐式修复模板。
 - owner 直接从 `main` 交付。发布前必须提交并推送有价值内容，使本地 `main` 精确等于 `origin/main` 且 `git status --porcelain` 为空；不得用 stash、临时分支或 PR 绕过门禁。
-- canonical release gate 固定覆盖版本与内部依赖对齐、shared-skill 同步、committed Codex marketplace payload、隔离 template smoke、clean worktree 与 exact `main == origin/main`。完整测试、adapter bundle tests 和三个 npm 包的 dry-run 按本轮实际风险比例化追加。
-- npm 发布顺序固定为 `@veewo/claw-core`、`@veewo/claw-client`、`@veewo/claw`。release 完成态直接核对 GitHub source/tag、三个 npm 包与 `dist-tags.latest`、committed Codex marketplace payload 和 clean worktree。
+- canonical release gate 固定覆盖版本与内部依赖对齐、shared-skill 同步、committed Codex marketplace payload、隔离 template smoke、clean worktree 与 exact `main == origin/main`。完整测试、adapter bundle tests 和两个 npm 包的 dry-run 按本轮实际风险比例化追加。
+- npm 发布顺序固定为 `@veewo/claw-core`、`@veewo/claw`。release 完成态直接核对 GitHub source/tag、两个 npm 包与 `dist-tags.latest`、committed Codex marketplace payload 和 clean worktree。
 - release 与用户端 `update` 是两个有序完成边界。release 不要求刷新本机全局 CLI 或 installed Codex plugin；发布后由独立 `claw-kit:update` 从已发布 npm 与 official GitHub marketplace 刷新，并只允许 `claw-kit@claw-kit` identity。
 - `release-claw-kit` 是仓库本地的 artifact-family router，不随 Codex plugin 发布。CLI/npm 发布由 `release-claw-cli` 执行；Codex、Cindy、OpenClaw 与 OpenCode 各由独立 platform release skill 执行。artifact-specific ownership 和 Cindy installer/update 合同由 `.claw/truth/features/artifact-specific-plugin-release-and-cindy-update.md` 及其 ADR 拥有。
 - 新模板协议可能让旧的正式 CLI 无法加载待发布模板。release 开发阶段可以临时把全局 `claw` link 到已构建的 workspace CLI/core 以解除自举阻塞，但这不是发布或 update 完成证据；registry 可见后必须恢复正式 npm 安装，Codex plugin 仍不得从未发布 workspace payload 刷新。
@@ -19,7 +19,6 @@
 
 - `package.json`
 - `packages/core/package.json`
-- `packages/client/package.json`
 - `packages/cli/package.json`
 - `packages/codex-adapter/.codex-plugin/plugin.json`
 - `.agents/skills/release-claw-kit/SKILL.md`
@@ -35,16 +34,20 @@
 
 - `npm run verify:release`
 - `npm run publish:release`
-- `verify:release` / `publish:release` now gate only Core, Client, and CLI. Coordinated marketplace, adapter-version, shared-skill, plugin-bundle, and cross-artifact template checks run only through explicit `verify:batch-release` / `publish:batch-release`.
+- `verify:release` / `publish:release` now gate only Core and CLI. Coordinated marketplace, adapter-version, shared-skill, plugin-bundle, and cross-artifact template checks run only through explicit `verify:batch-release` / `publish:batch-release`.
 - `npm run check:template-versions`
 - `npm view @veewo/claw-core version dist-tags.latest --json`
-- `npm view @veewo/claw-client version dist-tags.latest --json`
 - `npm view @veewo/claw version dist-tags.latest bin dependencies --json`
 - `git rev-list --left-right --count main...origin/main`
 - `git status --porcelain`
 
 <!-- state: history -->
 ## 演进记录
+
+<!-- dated: 2026-11-03 -->
+### Client package removed; publish surface returns to Core and CLI
+
+`@veewo/claw-client` 已随本地 session daemon 删除。`claw session open` 改为进程内 direct 执行后，仓库内不再有该 Node 传输 API 的消费者；保留同名包仍会制造第二个 API 表面。当前发布顺序为 `@veewo/claw-core` → `@veewo/claw`，CLI 只精确依赖 Core。以下更早的三包发布记录仍是该时间点的历史证据，不描述当前发布面。
 
 <!-- dated: 2026-10-23 -->
 ### 0.2.65 CLI/Core/Client release stopped after partial npm delivery

@@ -4,7 +4,7 @@ import {
   type PlanEvent,
   type WorkflowGuidance,
 } from "@veewo/claw-core";
-import type { ClawHostActionV1 } from "@veewo/claw-client";
+import type { ClawHostActionV1 } from "@veewo/claw-core";
 
 export function buildCodexHostActions(
   result: {

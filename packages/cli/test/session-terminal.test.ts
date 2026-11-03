@@ -28,7 +28,6 @@ function runPersistentTerminal(
         ...process.env,
         CLAW_SESSION_DAEMON_RUNTIME_DIR: runtimeRoot,
         CLAW_SESSION_RUNTIME_DIR: path.join(runtimeRoot, "workflow"),
-        CLAW_SESSION_DAEMON_IDLE_TTL_MS: "2000",
         CLAW_HOST: "opencode",
       },
       input,
@@ -64,7 +63,8 @@ test("claw session open keeps one terminal session and conditionally restores si
 
   assert.equal(first[0]?.command, "session.open");
   assert.equal("currentPlan" in first[0]!, false);
-  assert.equal((first[0]?.telemetry as Record<string, unknown>).open, "cold");
+  assert.equal((first[0]?.telemetry as Record<string, unknown>).transport, "direct");
+  assert.equal(typeof (first[0]?.telemetry as Record<string, unknown>).durationMs, "number");
   assert.equal(first[1]?.command, "plan.create");
   assert.deepEqual(first[2]?.output, {
     status: "process.active",
@@ -73,6 +73,10 @@ test("claw session open keeps one terminal session and conditionally restores si
     rules: [],
   });
   assert.equal(first[3]?.command, "session.status");
+  assert.equal((first[3]?.session as Record<string, unknown>).state, "live");
+  assert.equal((first[3]?.transport as Record<string, unknown>).mode, "direct");
+  assert.equal(typeof (first[3]?.transport as Record<string, unknown>).pid, "number");
+  assert.equal(typeof (first[3]?.transport as Record<string, unknown>).startedAt, "string");
   assert.equal(first[4]?.command, "session.close");
 
   const reopened = runPersistentTerminal(
@@ -88,15 +92,9 @@ test("claw session open keeps one terminal session and conditionally restores si
     tasks: [{ title: "Stay resident" }],
     rules: [],
   });
-  assert.equal((reopened[0]?.telemetry as Record<string, unknown>).open, "warm");
+  assert.equal((reopened[0]?.telemetry as Record<string, unknown>).transport, "direct");
+  assert.equal(typeof (reopened[0]?.telemetry as Record<string, unknown>).durationMs, "number");
   assert.equal(reopened[1]?.command, "session.close");
-
-  const statePath = path.join(runtimeRoot, "daemon", "state.json");
-  const deadline = Date.now() + 5000;
-  while (fs.existsSync(statePath) && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  assert.equal(fs.existsSync(statePath), false);
 });
 
 test("persistent terminal implicitly targets current plan for normal plan and task commands", () => {

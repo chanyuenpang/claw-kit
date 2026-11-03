@@ -213,7 +213,7 @@ GitHub Pages 产品介绍在 [docs/index.html](docs/index.html)，是一份中�
 - 收口流程，让任务、笔记和决策保持对齐
 - 规划面可以保持开启、关掉，或接到自定义 planning skill
 - 适配器表面，让同一套工作流落到不同的 agent 宿主
-- 持久、与宿主无关的 session daemon，以及有类型的 Node 客户端，在多次操作之间保留工作目录和当前计划焦点
+- 持久、与宿主无关的 direct session，在多次操作之间保留工作目录和当前计划焦点，且不需要后台 daemon
 
 ## 团队为什么用它
 
@@ -279,7 +279,7 @@ claw plan create "Auxiliary workflow" --no-knowledge-capture --goal "Run the ful
 claw session open /path/to/my-project agent-session-id
 ```
 
-之后输入的命令会复用该会话的工作目录和当前计划。`plan create`、`plan resume [planId]` 和 `plan leave` 会改变当前计划焦点；普通的 `plan` 和 `task` 命令不需要反复带上任务名或计划文件。用 `search --dir <other-dir> <query>` 做一次跨目录查找，且不改变会话工作目录。关掉终端会断开实时客户端，会话元数据会保留七天。
+之后输入的命令会复用该会话的工作目录和当前计划。`plan create`、`plan resume [planId]` 和 `plan leave` 会改变当前计划焦点；普通的 `plan` 和 `task` 命令不需要反复带上任务名或计划文件。用 `search --dir <other-dir> <query>` 做一次跨目录查找，且不改变会话工作目录。会话就在该 CLI 进程内执行：没有需要启动、发现或重启的 daemon。关掉终端会结束实时会话，保留的会话元数据保存七天，之后可用 `session open` 恢复。
 
 `claw plan create` 会走种子计划模板。显式 `--template` 优先；否则 claw 使用 `.claw/project.json` 或 `.claw/project-override.json` 里的 `defaultPlanTemplate`，再回退到内置的 `default` 模板。开启规划的项目从 `process.discussing` 开始，包含一个规划任务加上一个激活桥接任务；关闭规划的项目直接从 `process.active` 开始。规划任务分析请求，并用配置好的 planning skill 填入可执行任务。`claw search --query "<topic>"` 仍是可选的命令提示，不是规划的必经步骤。
 
@@ -401,8 +401,6 @@ npm run install:dsh-plugin    # dsh plugin --profile web add <tarball> (--profil
 
 - `@veewo/claw`
   - 在项目里运行 `.claw` 工作流的 CLI 入口
-- `@veewo/claw-client`
-  - 轻量、有类型的 Node API，面向 `claw session open` 使用的同一个持久 session daemon
 - `@veewo/claw-core`
   - 共享的工作流原语：项目配置、规划、搜索、truth 入库和保留
 - `@claw-kit/standard-adapter`
@@ -415,6 +413,9 @@ npm run install:dsh-plugin    # dsh plugin --profile web add <tarball> (--profil
   - 面向 OpenClaw 的适配器层，建立在同一套核心工作流模型上
 - `@claw-kit/opencode-adapter`
   - 面向 OpenCode 的适配器，通过 TypeScript 插件、插件垫片、agent 定义和 skills 把工作流落到 OpenCode
+
+npm 发布顺序为先 `@veewo/claw-core`，再 `@veewo/claw`。已删除的
+`@veewo/claw-client` 随共享 session daemon 一并退役。
 
 ## `project.json` 一览
 

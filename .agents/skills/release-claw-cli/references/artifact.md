@@ -10,9 +10,9 @@ A tested candidate aligned with the target CLI base takes precedence over bump/b
 - Scope: root `package.json`, `packages/core`, `packages/cli`, shared CLI/runtime
   code, lockfile, synchronized templates/shared skills, and compatibility version
   resets required by the CLI baseline.
-- Version: one three-segment version shared by root, `@veewo/claw-core`,
-  `@veewo/claw-client`, and `@veewo/claw`. Pin Core and Client exactly from CLI,
-  pin the CLI peer from Client, and pin Core from OpenClaw.
+- Version: one three-segment version shared by root, `@veewo/claw-core`, and
+  `@veewo/claw`. Pin Core exactly from CLI and pin Core from OpenClaw. The
+  removed `@veewo/claw-client` is not versioned, pinned, or published.
 - **Version selection rule:** unless the owner explicitly names a version, the
   new CLI candidate increments the third segment beyond known source/local allocated
   and published `@veewo/claw` versions (e.g. published 0.2.25 → 0.2.26). Never guess a major/minor
@@ -34,7 +34,7 @@ A tested candidate aligned with the target CLI base takes precedence over bump/b
   Treat a direct-node failure as a runner mistake, re-run via npm, and only
   investigate when the npm run also fails.
 - Reset every adapter version to `<cli>.0`; this does not publish an adapter.
-- Publish `@veewo/claw-core`, then `@veewo/claw-client`, then `@veewo/claw`; create tag `v<version>`
+- Publish `@veewo/claw-core`, then `@veewo/claw`; create tag `v<version>`
   and the GitHub Release.
 - Prepare and commit beta source locally without pushing. Before formal publication
   require the frozen candidate, seven-day local trial, clean local main at its
@@ -45,7 +45,7 @@ A tested candidate aligned with the target CLI base takes precedence over bump/b
   The template check is a required gate for every
   built-in skill package that contains `TEMPLATE.json`; its version must match
   `TEMPLATE_DRIVER_VERSION`, rather than the release package version.
-- After publishing, verify npm metadata and real retrieval for all three packages.
+- After publishing, verify npm metadata and real retrieval for both packages.
   Never reuse an already-published version or force-move an existing tag.
 - Refresh local installations only when separately requested and only from the
   published npm/GitHub artifacts.

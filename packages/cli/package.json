@@ -34,11 +34,7 @@
     "claw": "./dist/bin.js"
   },
   "dependencies": {
-    "@veewo/claw-client": "0.2.69",
     "@veewo/claw-core": "0.2.69"
-  },
-  "exports": {
-    "./session-daemon": "./dist/session-daemon-entry.js"
   },
   "scripts": {
     "build": "node ./scripts/clean-dist.mjs && tsc -p tsconfig.json",

@@ -37,7 +37,8 @@ export function createTemporaryDirectory(prefix: string): string {
 // from other concurrently executed CLI test modules. Individual tests may
 // still override this path through buildSpawnEnv's `extra` argument.
 export const moduleSessionRuntimeDir = createTemporaryDirectory("claw-kit-cli-runtime-");
-const daemonRuntimeRoots = new Set([path.join(moduleSessionRuntimeDir, "v2")]);
+// Persistent sessions execute in-process, so only the embedding/search worker
+// daemons survive a CLI command and can retain fixture handles on Windows.
 const memoryRuntimeRoots = new Set([path.join(moduleSessionRuntimeDir, "embedding")]);
 // Some tests invoke Core in-process, so child-only environment isolation is
 // insufficient. Keep their memory workers local and let them retire promptly.
@@ -52,18 +53,17 @@ export function createFixture(name: string): string {
 after(async () => {
   const failures: unknown[] = [];
   await Promise.all([...temporaryDirectories].map(waitForTestCompletion));
-  // The daemon inherits the first CLI's cwd and can keep that fixture locked
-  // on Windows. This runtime was created exclusively by this test module;
-  // stop its daemon before deleting either projects or discovery state.
-  const daemonStateFiles = [
-    ...[...daemonRuntimeRoots].map(runtime => path.join(runtime, "daemon", "state.json")),
-    ...[...memoryRuntimeRoots].flatMap(runtime => [path.join(runtime, "state.json"), path.join(runtime, "search-reader", "state.json")]),
-  ];
-  for (const stateFile of daemonStateFiles) {
+  // A memory worker inherits the first CLI's cwd and can keep that fixture
+  // locked on Windows. These runtimes were created exclusively by this test
+  // module; stop their worker before deleting project fixtures.
+  const memoryStateFiles = [...memoryRuntimeRoots].flatMap(
+    runtime => [path.join(runtime, "state.json"), path.join(runtime, "search-reader", "state.json")],
+  );
+  for (const stateFile of memoryStateFiles) {
     try {
       const state = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { pid: number };
       if (!Number.isSafeInteger(state.pid) || state.pid <= 0 || state.pid === process.pid) {
-        throw new Error("Invalid test daemon pid");
+        throw new Error("Invalid test worker pid");
       }
       try { process.kill(state.pid); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
@@ -159,15 +159,11 @@ export const ISOLATED_ENV_KEYS = [
 ] as const;
 
 export function buildSpawnEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  for (const [runtime, owners] of [
-    [extra?.CLAW_SESSION_DAEMON_RUNTIME_DIR, daemonRuntimeRoots],
-    [extra?.CLAW_EMBEDDING_DAEMON_RUNTIME_DIR, memoryRuntimeRoots],
-  ] as const) {
-    if (runtime && [...temporaryDirectories].some(root => {
-      const relative = path.relative(root, path.resolve(runtime));
-      return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-    })) owners.add(path.resolve(runtime));
-  }
+  const memoryRuntime = extra?.CLAW_EMBEDDING_DAEMON_RUNTIME_DIR;
+  if (memoryRuntime && [...temporaryDirectories].some(root => {
+    const relative = path.relative(root, path.resolve(memoryRuntime));
+    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  })) memoryRuntimeRoots.add(path.resolve(memoryRuntime));
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     CLAW_EMBEDDING_WARMUP_DISABLE_LAUNCH: "1",

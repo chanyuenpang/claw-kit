@@ -12,9 +12,8 @@ async function fixture(t) {
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const write = async (name, value) => { const file = path.join(root, name); await fs.mkdir(path.dirname(file), { recursive: true }); await fs.writeFile(file, JSON.stringify(value, null, 2) + "\n"); };
   await write("package.json", { name: "fixture", version: "0.2.43" });
-  for (const name of ["core", "client", "cli"]) await write("packages/" + name + "/package.json", { name: "@veewo/claw-" + name, version: "0.2.43",
-    ...(name === "cli" ? { dependencies: { "@veewo/claw-core": "0.2.43", "@veewo/claw-client": "0.2.43" } } : {}),
-    ...(name === "client" ? { peerDependencies: { "@veewo/claw": "0.2.43" } } : {}) });
+  for (const name of ["core", "cli"]) await write("packages/" + name + "/package.json", { name: "@veewo/claw-" + name, version: "0.2.43",
+    ...(name === "cli" ? { dependencies: { "@veewo/claw-core": "0.2.43" } } : {}) });
   for (const name of families.filter(f => f !== "cli")) await write("packages/" + name + "-adapter/package.json", { name, version: "0.2.43.0",
     ...(name === "openclaw" ? { dependencies: { "@veewo/claw-core": "0.2.43" } } : {}) });
   await write("packages/codex-adapter/.codex-plugin/plugin.json", { version: "0.2.43.0" });

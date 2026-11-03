@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import { exportCodexPluginBundle, installCodexPluginBundle, readCodexPluginSource } from "./codex-plugin-bundle.mjs";
 import { loadSkillInputs } from "./skill-artifacts.mjs";
@@ -139,16 +139,12 @@ async function assertPlatformArtifactReadiness(cliVersion) {
 async function verifyReleaseReadiness() {
   const root = await readJson("package.json");
   const core = await readJson("packages/core/package.json");
-  const client = await readJson("packages/client/package.json");
   const cli = await readJson("packages/cli/package.json");
 
   const cliVersion = root.version;
 
   assert(core.version === cliVersion, `@veewo/claw-core version ${core.version} must equal the CLI release version ${cliVersion}.`);
-  assert(client.version === cliVersion, `@veewo/claw-client version ${client.version} must equal the CLI release version ${cliVersion}.`);
-  assert(client.peerDependencies?.["@veewo/claw"] === cliVersion, "Client optional CLI peer must match the release version.");
   assert(cli.version === cliVersion, `@veewo/claw version ${cli.version} must equal the CLI release version ${cliVersion}.`);
-  assert(cli.dependencies?.["@veewo/claw-client"] === cliVersion, "CLI must pin the exact @veewo/claw-client version.");
   assert(cli.dependencies?.["@veewo/claw-core"] === cliVersion, "CLI must pin the exact @veewo/claw-core version.");
   assertCleanWorktree("Before publishing");
   assertDirectMainCheckout();
@@ -165,25 +161,19 @@ async function verifyReleaseReadiness() {
     }
 
     npmCommand(["run", "build", "-w", "@veewo/claw-core"]);
-    npmCommand(["run", "build", "-w", "@veewo/claw-client"]);
     npmCommand(["run", "build", "-w", "@veewo/claw"]);
     const packDir = path.join(outDir, "packs");
     await fs.mkdir(packDir, { recursive: true });
     const coreTarball = npmCommand(["pack", "--workspace", "@veewo/claw-core", "--pack-destination", packDir])
       .split(/\r?\n/).at(-1);
-    const clientTarball = npmCommand(["pack", "--workspace", "@veewo/claw-client", "--pack-destination", packDir])
-      .split(/\r?\n/).at(-1);
     const cliTarball = npmCommand(["pack", "--workspace", "@veewo/claw", "--pack-destination", packDir])
       .split(/\r?\n/).at(-1);
-    assert(coreTarball && clientTarball && cliTarball, "npm pack must produce core, client, and CLI tarballs.");
-    const clientContents = npmCommand([
-      "pack", "--workspace", "@veewo/claw-client", "--dry-run", "--json",
-    ]);
+    assert(coreTarball && cliTarball, "npm pack must produce core and CLI tarballs.");
     const cliContents = npmCommand([
       "pack", "--workspace", "@veewo/claw", "--dry-run", "--json",
     ]);
-    assert(clientContents.includes("dist/index.js") && clientContents.includes("dist/index.d.ts"), "Client pack must contain runtime and declarations.");
-    assert(cliContents.includes("dist/session-daemon-entry.js"), "CLI pack must contain the session daemon entry.");
+    assert(cliContents.includes("dist/session-command.js"), "CLI pack must contain the in-process session command module.");
+    assert(!cliContents.includes("session-daemon-entry"), "CLI pack must not contain the removed session daemon entry.");
     const installDir = path.join(outDir, "installed-packages");
     await fs.mkdir(installDir, { recursive: true });
     await fs.writeFile(path.join(installDir, "package.json"), JSON.stringify({
@@ -191,7 +181,6 @@ async function verifyReleaseReadiness() {
       type: "module",
       dependencies: {
         "@veewo/claw-core": `file:${path.join(packDir, coreTarball)}`,
-        "@veewo/claw-client": `file:${path.join(packDir, clientTarball)}`,
         "@veewo/claw": `file:${path.join(packDir, cliTarball)}`,
       },
     }, null, 2));
@@ -214,50 +203,27 @@ async function verifyReleaseReadiness() {
       [installedCliPath, "init", "--name", "Installed Session Smoke", "--planning", "false"],
       { cwd: installedSessionProject, stdio: "pipe" },
     );
-    const installedClientPath = path.join(
-      installDir,
-      "node_modules",
-      "@veewo",
-      "claw-client",
-      "dist",
-      "index.js",
+    const installedSession = execFileSync(
+      process.execPath,
+      [installedCliPath, "session", "open", installedSessionProject, "release-smoke-agent", "--host", "cindy"],
+      {
+        cwd: installedSessionProject,
+        env: { ...process.env, CLAW_SESSION_DAEMON_RUNTIME_DIR: installedSessionRuntime },
+        input: [
+          'plan create "Release session plan" --goal "Verify installed direct session"',
+          "plan show --simple",
+          "session close",
+          "",
+        ].join("\n"),
+        encoding: "utf-8",
+      },
     );
-    const installedDaemonPath = path.join(
-      installDir,
-      "node_modules",
-      "@veewo",
-      "claw",
-      "dist",
-      "session-daemon-entry.js",
-    );
-    const { ClawClient } = await import(`${pathToFileURL(installedClientPath).href}?release=${Date.now()}`);
-    const previousIdleTtl = process.env.CLAW_SESSION_DAEMON_IDLE_TTL_MS;
-    process.env.CLAW_SESSION_DAEMON_IDLE_TTL_MS = "100";
-    try {
-      const installedSession = await new ClawClient({
-        runtimeRoot: installedSessionRuntime,
-        daemonEntryPath: installedDaemonPath,
-        startupTimeoutMs: 10_000,
-      }).open("release-smoke-agent", installedSessionProject);
-      await installedSession.command({
-        operation: "plan.create",
-        input: {
-          taskName: "release-session-plan",
-          title: "Release session plan",
-          goalText: "Verify installed client and daemon",
-        },
-      });
-      const simple = await installedSession.command({
-        operation: "plan.show",
-        input: { simple: true },
-      });
-      assert(simple.goal?.text === "Verify installed client and daemon", "Installed client/daemon command smoke failed.");
-      await installedSession.close();
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    } finally {
-      if (previousIdleTtl === undefined) delete process.env.CLAW_SESSION_DAEMON_IDLE_TTL_MS;
-      else process.env.CLAW_SESSION_DAEMON_IDLE_TTL_MS = previousIdleTtl;
-    }
+    assert.match(installedSession, /"command":"session\.open"/, "Installed direct session open smoke failed.");
+    assert.match(installedSession, /"transport":"direct"/, "Installed session must report the direct transport.");
+    assert.match(installedSession, /"text":"Verify installed direct session"/, "Installed direct session command smoke failed.");
+    assert.equal(fs.existsSync(path.join(installedSessionRuntime, "daemon", "state.json")), false,
+      "Installed direct session must not create daemon discovery state.");
+    await new Promise((resolve) => setTimeout(resolve, 250));
     if (includePlatformArtifacts) {
     const smokeHome = path.join(outDir, "home");
     const smokeProject = path.join(outDir, "project");

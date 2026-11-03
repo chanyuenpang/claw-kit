@@ -3,12 +3,12 @@ import { ClawError, buildMemoryIndex, resolveProjectContext, resolveProjectMemor
 
 type WorkerMessage = { ok?: boolean; result?: MemoryIndexResult; message?: string; code?: string };
 
-/** Index refresh uses a blocking embedding worker. Inside the session daemon
- * that must not freeze the TCP event loop, or the next command times out
- * behind it. One-shot commands stay on the caller.
+/** Index refresh uses a blocking embedding worker. Inside a persistent session
+ * that must not freeze the command loop, or the next command waits behind it.
+ * One-shot commands stay on the caller.
  */
 export function buildMemoryIndexWithoutBlocking(cwd: string): Promise<MemoryIndexResult> {
-  if (process.env.CLAW_IN_SESSION_DAEMON !== "1" || !resolveProjectMemoryEmbeddingConfig(resolveProjectContext(cwd))) {
+  if (process.env.CLAW_PERSISTENT_SESSION !== "1" || !resolveProjectMemoryEmbeddingConfig(resolveProjectContext(cwd))) {
     return Promise.resolve(buildMemoryIndex({ cwd, scope: "project" }));
   }
   const workerUrl = new URL("./memory-index-worker.js", import.meta.url);
@@ -16,7 +16,7 @@ export function buildMemoryIndexWithoutBlocking(cwd: string): Promise<MemoryInde
     let settled = false;
     const worker = new Worker(workerUrl, {
       workerData: { cwd, scope: "project" },
-      env: { ...process.env, CLAW_IN_SESSION_DAEMON: "0" },
+      env: { ...process.env, CLAW_PERSISTENT_SESSION: "0" },
     });
     const finish = (error?: Error, value?: MemoryIndexResult): void => {
       if (settled) return;

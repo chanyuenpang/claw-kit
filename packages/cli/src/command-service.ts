@@ -57,7 +57,7 @@ import type {
   ClawHostActionV1,
   ClawKnowledgeDispatch,
   ClawPostCommitEffectV1,
-} from "@veewo/claw-client";
+} from "@veewo/claw-core";
 import { buildCodexHostActions } from "./codex-host-actions.js";
 import { isHostActionsHost, type ClawHost } from "./invocation-host.js";
 import { RegistryFocusSessionStore, SessionRegistryV2 } from "./session-registry-v2.js";
@@ -72,7 +72,7 @@ export type CommandContext = {
   mode: "stateless" | "session";
 };
 
-export type ClawCommandRequest = import("@veewo/claw-client").ClawSessionCommand;
+export type ClawCommandRequest = import("@veewo/claw-core").ClawSessionCommand;
 
 export type ClawCommandResult = {
   output: unknown;

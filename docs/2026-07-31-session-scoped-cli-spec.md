@@ -9,6 +9,14 @@ This document defines a host-neutral, process-backed session model for Claw.
 It is the product contract for implementation and acceptance, not an MVP
 outline. Implementation starts only after this specification is approved.
 
+> **Superseded parts (2026-11-03):** the local session daemon, its
+discovery/authentication/TTL semantics, and the `@veewo/claw-client` package were
+removed; `claw session open` now executes in-process with the unchanged stdio
+contract. Sections 3.5, 5, 10, 11, 13, 14, 15, and 16 carry dated notes.
+Statements elsewhere about a daemon process, daemon restart, protocol versions,
+or a Node client describe the superseded product contract, not current
+behavior.
+
 The words MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are normative.
 
 ## 1. Product goal
@@ -96,6 +104,13 @@ Unlike `end.completed`, it does not assert that the plan goal was completed.
 The session daemon is one local, shared process per user installation. It owns
 session discovery, retained session state, connection handling, session command
 serialization, and the local protocol.
+
+**Superseded by in-process direct session transport (2026-11-03).**
+`claw session open` now builds `SessionRegistryV2` and
+`SessionCommandExecutor` inside the CLI process and serves the command loop
+there. The shared daemon, its discovery file, token, startup lock, idle TTL,
+protocol-version handshake, and daemon process are removed. This section
+records the historical product contract only.
 
 ### 3.6 Simple plan view
 
@@ -253,6 +268,12 @@ structured results and errors.
 
 Host identity MAY be configured once on client construction or connection. It
 is adapter metadata, not a Core plan-semantic input.
+
+**Superseded by in-process direct session transport (2026-11-03).** The
+repository no longer publishes `@veewo/claw-client`. Programmatic sessions use
+the `claw session open` stdio JSONL contract instead: one JSON request per line
+and one JSON response per line, with the same
+`output`/`hostActions`/`postCommitEffects`/`knowledgeDispatch` envelope.
 
 ## 6. Authoritative simple plan view
 
@@ -494,6 +515,13 @@ claw search --dir <dir> --query <text>
 
 ## 10. Daemon architecture
 
+**Superseded by in-process direct session transport (2026-11-03).** There is
+no shared daemon. A persistent session is one CLI child executing in-process.
+Retained records, the file execution queue, identity hashing, and the seven-day
+TTL are unchanged; discovery, authentication, protocol-version negotiation,
+startup locking, idle TTL, and daemon restart no longer exist. Sections 10.1-10.3
+and 10.6 are historical.
+
 ### 10.1 Topology
 
 There is one shared daemon per local user installation. It manages multiple
@@ -578,6 +606,12 @@ After restart, the daemon MUST:
 
 The product deliberately does not add cross-disconnect request replay.
 
+**Superseded in part by in-process direct session transport (2026-11-03).** A
+transport loss is now a dead CLI child rather than a broken socket.
+`SESSION_CONNECTION_LOST` and `CLAW_SESSION_TIMEOUT` are produced by the adapter
+from the child process lifecycle; the no-replay rule and the
+reopen-then-inspect recovery remain current.
+
 If a connection is lost while a command is in flight:
 
 - the client MUST return a structured connection-lost error;
@@ -632,6 +666,14 @@ Initial stable error codes are:
 | `PLAN_TRANSITION_CONFLICT` | Canonical plan state changed before a focus transition committed. |
 | `SESSION_COMMAND_FAILED` | The daemon completed the request with a structured Core/CLI failure. |
 
+**Superseded in part by in-process direct session transport (2026-11-03).**
+`SESSION_PROTOCOL_UNSUPPORTED` and the daemon-only authentication,
+protocol-invalid, daemon-unavailable, request-timeout, and handle-invalid codes
+are removed. `SESSION_CONNECTION_LOST` and `CLAW_SESSION_TIMEOUT` remain and are
+produced by the adapter from the child process lifecycle. An open that cannot
+acquire the execution queue fails with `PLAN_WRITE_CONFLICT` (`queuePath`,
+`timeoutMs`) before the adapter's open budget.
+
 Errors MUST include:
 
 - stable code;
@@ -644,6 +686,14 @@ Errors MUST include:
 ## 14. Compatibility and migration
 
 Session support is additive.
+
+**Superseded by in-process direct session transport (2026-11-03).** The
+published `@veewo/claw-client` no longer exists. Migration is CLI-only: `claw
+session open` serves the unchanged stdio contract from one direct process, and
+npm publishes `@veewo/claw-core` then `@veewo/claw`. Stateless CLI
+compatibility, existing hooks and adapters, canonical plan storage, and the
+no-replay rule remain. Steps 2-6 below describe the original multi-package
+migration and are historical.
 
 The first implementation starts from a new versioned session runtime. It does
 not migrate legacy session workflow, binding, or daemon cache state. Existing
@@ -682,6 +732,14 @@ tokens or private plan content:
 - command start, completion, structured failure, timeout, and disconnect;
 - cold and warm open duration.
 
+**Superseded in part by in-process direct session transport (2026-11-03).**
+Daemon started/discovered/reused/stopped, protocol mismatch, and authentication
+failure are no longer events. Current session diagnostics are the direct
+transport identity (`{mode: "direct", pid, startedAt}`) returned by
+`session status`, the open `telemetry: {transport: "direct", durationMs}`, and the
+adapter's own child-process budget and stderr diagnostics. The no-token,
+hashed-identity logging rule remains.
+
 Logs MUST identify sessions by a safe hash, not raw filesystem directory names
 or raw agent session IDs.
 
@@ -692,6 +750,12 @@ command MAY aggregate it, but is not required to own session semantics.
 
 Implementation is complete only when all applicable scenarios pass in source,
 the packaged CLI, and the published Node client.
+
+**Superseded in part by in-process direct session transport (2026-11-03).**
+Acceptance is against source, the packaged CLI, and the unchanged stdio JSONL
+contract. The published Node client and every "daemon restart" criterion no
+longer apply; retained recovery is verified by reopening from a new CLI
+process.
 
 ### 16.1 Parameter reduction
 

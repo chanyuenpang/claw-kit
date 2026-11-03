@@ -7,7 +7,7 @@ import { verifyCandidate } from "./release-candidate.mjs";
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 const read = async file => JSON.parse(await fs.readFile(file, "utf8"));
 const manifests = {
-  cli: ["package.json", "packages/core/package.json", "packages/client/package.json", "packages/cli/package.json"],
+  cli: ["package.json", "packages/core/package.json", "packages/cli/package.json"],
   codex: ["packages/codex-adapter/package.json", "packages/codex-adapter/.codex-plugin/plugin.json"],
   dsh: ["packages/dsh-adapter/package.json"],
   cindy: ["packages/cindy-adapter/package.json", "packages/cindy-adapter/plugin/ghost.json"],

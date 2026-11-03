@@ -4,9 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { initProject, writePlan, doneKnowledgeFinalizationJob, type KnowledgeFinalizationJob } from "@veewo/claw-core";
-import { ClawClient } from "@veewo/claw-client";
-import { startSessionDaemon } from "../dist/session-daemon.js";
-import { SessionCommandExecutor } from "../dist/session-command.js";
+import { openPersistentSession, SessionCommandExecutor } from "../dist/session-command.js";
 import { SessionRegistryV2 } from "../dist/session-registry-v2.js";
 
 test("receipt-only reconnect and query never restore focus or launch business refresh", async t => {
@@ -36,13 +34,12 @@ test("receipt-only reconnect and query never restore focus or launch business re
     { operation: "knowledge.done", input: { finalizeId, claimToken: "wrong", status: "succeeded", result: "done" } }), { code: "KNOWLEDGE_CLAIM_MISMATCH" });
   assert.equal(recoveryCalls, 0, "credential rejection must precede focus recovery even for a completion mutation");
   assert.equal(fs.existsSync(path.join(cwd, ".claw", "runtime", "completion-refresh")), false);
-  const daemon = await startSessionDaemon({ runtimeRoot, idleTtlMs: 0 });
-  const session = await new ClawClient({ runtimeRoot, host: "opencode", clientKind: "adapter", receiptOnly: true }).open(actor, cwd);
+  const session = await openPersistentSession({ runtimeRoot, workdir: cwd, agentSessionId: actor, host: "opencode", clientKind: "adapter", receiptOnly: true });
   try {
-    assert.equal((session.openResult as any).currentPlan, undefined);
-    const result = await session.command({ operation: "knowledge.done.receipt", input: { finalizeId, expectedStatus: "succeeded", expectedResult: "done" } }) as any;
+    assert.equal((session.openResult as { currentPlan?: unknown }).currentPlan, undefined);
+    const result = (await session.execute({ operation: "knowledge.done.receipt", input: { finalizeId, expectedStatus: "succeeded", expectedResult: "done" } })).output as { matches?: boolean; postCommitEffectsVerified?: boolean };
     assert.equal(result.matches, true); assert.equal(result.postCommitEffectsVerified, false);
     assert.equal(fs.readFileSync(plan.planPath, "utf8"), beforePlan); assert.equal(fs.readFileSync(jobPath, "utf8"), beforeJob);
     assert.equal(fs.existsSync(path.join(cwd, ".claw", "runtime", "completion-refresh")), false);
-  } finally { await session.close(); await daemon.close(); }
+  } finally { await session.close(); }
 });

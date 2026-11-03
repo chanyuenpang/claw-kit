@@ -2,6 +2,13 @@
 
 Status: proposed technical design, 2026-07-31
 
+> Superseded in part (2026-11-03): the shared session daemon and
+> `@veewo/claw-client` transport were removed. `claw session open` now executes
+> in-process; retained session records, the composite session identity and the
+> per-session file queue remain. Daemon discovery/authentication/lifecycle
+> sections describe the retired transport only. See
+> `.claw/truth/adr/in-process-direct-session-transport.md`.
+
 Product contract:
 [`2026-07-31-session-scoped-cli-spec.md`](./2026-07-31-session-scoped-cli-spec.md)
 

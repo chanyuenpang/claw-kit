@@ -182,7 +182,7 @@ Use [the beta workflow](docs/beta-release.md) for the complete maintained comman
    test it locally for seven days. Use smoke-test-claw-kit with that beta batch.
 4. For formal release run `npm run verify:release -- --candidate <directory>`,
    then `npm run publish:release -- --candidate <directory>`. This publishes
-   frozen Core/Client/CLI tarballs, verifies retrieval, and only then pushes main.
+   frozen Core/CLI tarballs, verifies retrieval, and only then pushes main.
 5. Finish immutable source and adapter tags/Releases using the artifact-specific
    skills. Codex reuses the saved composed marketplace tree without rebuilding.
 6. Confirm local main equals origin/main and the worktree is clean. Refresh local

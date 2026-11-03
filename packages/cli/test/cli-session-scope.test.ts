@@ -44,8 +44,7 @@ import {
   createClawUpdateNpmShim,
 } from "./cli-test-support.js";
 import { writePlan } from "@veewo/claw-core";
-import { resolveSessionDaemonRuntimeRoot } from "@veewo/claw-client";
-import { SessionRegistryV2 } from "../dist/session-registry-v2.js";
+import { SessionRegistryV2, resolveSessionDaemonRuntimeRoot } from "../dist/session-registry-v2.js";
 
 test("CLI fixtures isolate both legacy and v2 records from the user runtime", () => {
   const env = buildSpawnEnv();

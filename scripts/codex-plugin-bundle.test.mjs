@@ -351,7 +351,7 @@ test("repository-local release skills split CLI and platform publication contrac
     `${skill}\n${JSON.stringify(template)}\n${fallback}\n${artifact}`).join("\n");
   assert.match(combined, /npm run verify:release/);
   assert.match(combined, /Verify built-in templated skill compatibility/);
-  assert.match(combined, /@veewo\/claw-core.*, then `@veewo\/claw-client`, then `@veewo\/claw`/);
+  assert.match(combined, /@veewo\/claw-core.*, then `@veewo\/claw`/);
   assert.match(combined, /HEAD == origin\/main/);
   assert.match(combined, /vcodex-<version>/);
   assert.match(combined, /vcindy-<version>/);

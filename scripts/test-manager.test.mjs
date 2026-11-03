@@ -12,7 +12,7 @@ import {
 
 test("functional paths select their focused test domains", () => {
   assert.deepEqual(selectDomains(["packages/core/src/embedding-local.ts"]).domains, ["embeddings"]);
-  assert.deepEqual(selectDomains(["packages/cli/src/session-daemon.ts"]).domains, ["session-protocol"]);
+  assert.deepEqual(selectDomains(["packages/cli/src/session-command.ts"]).domains, ["session-transport"]);
   assert.deepEqual(selectDomains(["packages/cli/src/command-service.ts"]).domains, ["session-commands"]);
   assert.deepEqual(selectDomains(["packages/cli/src/search-entry.ts"]).domains, ["cli-search"]);
   assert.deepEqual(selectDomains(["packages/cli/src/knowledge-hook-preflight.ts"]).domains, ["cli-closeout"]);
@@ -37,9 +37,9 @@ test("functional paths select their focused test domains", () => {
 });
 
 test("explicit cross-boundary paths select every required domain", () => {
-  assert.deepEqual(selectDomains(["packages/client/src/protocol.ts"]).domains, [
+  assert.deepEqual(selectDomains(["packages/core/src/session-contract.ts"]).domains, [
     "session-commands",
-    "session-protocol",
+    "session-transport",
   ]);
   assert.deepEqual(selectDomains(["packages/cli/src/session-registry-v2.ts"]).domains, [
     "session-focus",
@@ -58,7 +58,7 @@ test("cross-cutting and unclassified paths conservatively select the full suite"
 
 test("execution planning rejects unknown domains and deduplicates shared setup", () => {
   assert.throws(() => createExecutionPlan(["missing"]), /Unknown test domain/);
-  const steps = createExecutionPlan(["session-commands", "session-protocol"]);
+  const steps = createExecutionPlan(["session-commands", "session-transport"]);
   assert.equal(steps.filter((step) => step.args.join(" ") === "run build -w @veewo/claw-core").length, 1);
 });
 
@@ -106,7 +106,7 @@ test("CLI domain files replace the monolith with unique discoverable tests", () 
   }
 
   // Includes the release candidate's additional Codex/DSH host-contract regressions.
-  assert.equal(names.size, 148);
+  assert.equal(names.size, 157);
   const plannedFiles = createExecutionPlan(Object.keys(CLI_DOMAIN_TEST_FILES))
     .filter((step) => step.kind === "node" && step.args[0] === "--test")
     .map((step) => path.basename(step.args[1]))

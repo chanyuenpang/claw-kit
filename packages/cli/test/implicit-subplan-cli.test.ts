@@ -11,7 +11,7 @@ for (const sessionEnv of ["CLAW_SESSION_ID", "CODEX_THREAD_ID", "CODEX_SESSION_I
     initProject({ cwd, projectName: "Implicit CLI", planning: false });
     const env = { [sessionEnv]: `implicit-${sessionEnv}`,
       CLAW_SESSION_RUNTIME_DIR: createFixture("implicit-session-runtime"),
-      CLAW_SESSION_DAEMON_RUNTIME_DIR: createFixture("implicit-daemon-runtime"),
+      CLAW_SESSION_DAEMON_RUNTIME_DIR: createFixture("implicit-persistent-runtime"),
     };
     const templateFile = path.join(cwd, "child-template.json");
     fs.writeFileSync(templateFile, JSON.stringify({ id: "child-work", version: "1.0.0", status: "process.active",

@@ -30,8 +30,8 @@ Accepted
 统一使用一条 `SessionStart` 恢复流来承接 `.claw` 项目的 startup recovery，并通过 project-level session registry 直接绑定计划：
 
 - session registry 直接把当前 host 的 `sessionKey` 映射到 `.claw`-relative `planPath`
-- process-backed session open 以 project session binding 作为 pre-journal crash recovery 的 canonical anchor，并与 retained daemon focus 对账：有效 binding 可以通过既有 focus transition 原语恢复 root/subplan focus 与 parent linkage；没有 binding 但 retained focus 仍指向 live plan 时补回 binding；terminal binding 则恢复 parent 或释放 focus。该修复不扫描 task 目录、不重放 outcome-unknown mutation，也不创建第二套 workflow 状态机。
-- daemon 会话恢复只由原 session 的真实 claw 调用触发，并且只对该身份的 binding/focus 对账。共享 daemon 启动不遍历恢复历史 session，新的 `session.open` 不等待、续期、恢复或释放其他 session；历史 `live` 标记和未完成计划均不构成激活授权。
+- process-backed session open 以 project session binding 作为 pre-journal crash recovery 的 canonical anchor，并与 retained focus 对账：有效 binding 可以通过既有 focus transition 原语恢复 root/subplan focus 与 parent linkage；没有 binding 但 retained focus 仍指向 live plan 时补回 binding；terminal binding 则恢复 parent 或释放 focus。该修复不扫描 task 目录、不重放 outcome-unknown mutation，也不创建第二套 workflow 状态机。
+- session 恢复只由原 session 的真实 claw 调用触发，并且只对该身份的 binding/focus 对账。每次 `session.open` 不遍历恢复历史 session，也不等待、续期、恢复或释放其他 session；历史 `live` 标记和未完成计划均不构成激活授权。
 - TTL 到期不授权其他 session 接管旧计划。本次保守保留历史记录和焦点，不在启动或握手中清扫。独立维护只能按自身明确合同释放/删除，不得打开或续期会话、恢复计划、重放旧命令；独立持久任务也必须凭自身身份与授权继续，依赖父 session 的工作等待父 session 返回。
 - 已提交 focus transaction 的 journal 一致性修复仍由既有 owner 完成；它不是激活历史 session 的入口，不得扩张为批量 session 恢复。
 - `SessionStart` 不再按 hook source 区分 `startup`、`resume`、`compact` 的恢复逻辑
@@ -68,7 +68,7 @@ Accepted
 - startup recovery 继续保持为 enhancement，而不是替代 `plan write`、`plan edit`、`plan done` 和 truth/ADR deposition 的 correctness 机制
 - workflow 恢复与 `workflowGuidance` lifecycle contract 保持一致，减少 adapter 在 compact 后自行发明下一步或把 `commandHints` 误当作必须立即执行动作的空间
 - direct `sessionKey -> planPath` binding 让恢复目标确定化；没有 binding 时不会从其他 task directory 猜测计划
-- session daemon retained focus 现在可以从 committed binding 修复，覆盖 focus journal 尚未 prepared 时的狭窄窗口；恢复仍复用现有 focus transaction，因此 canonical plan、binding 与 retained projection 不增加新的持久化 owner。
+- retained session 的 focus 现在可以从 committed binding 修复，覆盖 focus journal 尚未 prepared 时的狭窄窗口；恢复仍复用现有 focus transaction，因此 canonical plan、binding 与 retained projection 不增加新的持久化 owner。
 - 没有 active workflow 时，系统仍然退回现有 `using-claw-kit` 入口，不增加新的恢复文案分支
 - 默认 startup prompt 现在也成为 adapter contract 的一部分：它负责声明 thread-local authorization，减少 Goal mode 与 delegated specialists 的误阻塞
 - project protocol 版本超前时，startup recovery 公开 version-sync 结果；恢复流不会在 context 内改写本地安装或路由 update skill

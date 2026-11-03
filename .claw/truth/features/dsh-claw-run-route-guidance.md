@@ -21,22 +21,23 @@ command hints directly in pwsh or another shell.
 - The adapter stores the rendered workflow snapshot by DSH agent scope. Concurrent
   Web threads cannot overwrite each other's injected `[claw workflow]` context; a
   global last-writer snapshot is not a valid multi-session fallback.
-- DSH's snake_case operation catalog maps onto the complete shared daemon contract:
+- DSH's snake_case operation catalog maps onto the complete shared CLI session command contract:
   plan fields include requirements, questions, acceptance criteria, rules, key decisions,
   references, closeout fields, and their removal forms; `plan.edit.operations` preserves
   an explicit canonical mutation order, and `plan.resume.plan_id` selects a plan directly.
 - `task.add` accepts one task or a batch, while `task.done` normalizes `choice`/`choice_id`
-  to daemon `choiceId`. Known mapped operations reject catalog-external arguments instead of
-  silently dropping them; unknown operations continue to pass through for daemon validation.
+  to the command contract's `choiceId`. Known mapped operations reject catalog-external arguments instead of
+  silently dropping them; unknown operations continue to pass through for CLI validation.
 - `search.index.refresh` is a mapped zero-argument operation. The adapter derives the refresh
   target exclusively from the caller's resolved workspace and rejects caller-supplied target-path
   arguments; it exposes the CLI's explicit project index refresh without widening DSH authority.
 - `ClawSession` captures bounded startup stderr and rejects pre-handshake child exits as
   `CLAW_SESSION_OPEN_FAILED`, preserving a structured CLI error code/message when present.
-  `CLAW_SESSION_OPEN_TIMEOUT` is reserved for a genuinely silent, still-running child.
+  `CLAW_SESSION_OPEN_TIMEOUT` is reserved for a genuinely silent, still-running child. The
+  session behind it is a direct in-process CLI child; there is no daemon to discover or restart.
 - Codex's fixed code-mode consumer, Plan Mode UI, and approval mechanics remain host-specific;
   DSH parity applies to the shared mutation and hostActions contracts, not those surfaces.
-- The model-allowed business operation domain now shares `ClawCommandService` and a typed contract across the daemon and trusted one-shot CLI session entry (`packages/cli/src/command-contract.ts`, `session-command.ts`, `command-entry.ts`). The adapter automatically falls back to that entry for a known unsupported daemon operation or a proven pre-send transport failure, using direct Node argv and bounded JSON stdin, not arbitrary CLI/shell forwarding. A timeout, disconnect, or other unknown-outcome mutation is never replayed. Both transports use session registry/focus preparation and the same command envelope and hostActions; internal/admin commands are outside the model operation domain.
+- The model-allowed business operation domain shares `ClawCommandService` and a typed contract across the in-process persistent session and the trusted one-shot CLI entry (`packages/cli/src/command-contract.ts`, `session-command.ts`, `command-entry.ts`). The adapter automatically falls back to that entry for a known unsupported operation or a proven pre-send transport failure, using direct Node argv and bounded JSON stdin, not arbitrary CLI/shell forwarding. A timeout, disconnect, or other unknown-outcome mutation is never replayed. Both routes use session registry/focus preparation and the same command envelope and hostActions; internal/admin commands are outside the model operation domain.
 - `packages/dsh-adapter/src/command-route.ts` owns this transport decision; `packages/cli/test/session-commands.test.ts` and `packages/dsh-adapter/test/command-route.test.mjs` cover representative route parity. The completed installed DSH candidate exercised a normal plan through finalization, but did not destructively inject lost responses in the live host; fault-injection tests covered those windows. Shared core guidance and hostActions semantics remain the canonical output contract.
 
 ## Related code

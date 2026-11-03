@@ -32,7 +32,7 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
   认领 job、顺序执行 assignment subplan、以 claim token 调用一次 `knowledge done`。
   采集边界由 [report-collection ADR](<adapter-owned-report-collection.md>) 拥有，不用 `knowledge wait`。
 - DSH adapter（`@veewo/dsh-claw-kit`，静态 Cordis bundle 插件）注册**单个原生工具
-  `claw_run`**：`execute` 优先经 daemon 执行 mutation，并在可证明的预执行缺口自动使用同一 typed session service 的受信 CLI baseline；
+  `claw_run`**：`execute` 在进程内 direct 持久会话中执行 mutation，并在可证明的预执行缺口自动使用同一 typed session service 的受信 CLI baseline；
   消费 CLI 生成的 `hostActions`（`create_goal`/`update_goal` → DSH 原生 goals；
   `update_plan` → 进度投影）、按白名单返回 compact guidance。`isHostActionsHost`
   （`codex | dsh`）取代 `effectiveHost === "codex"` 作为 hostActions 构建门控——DSH 与
@@ -42,7 +42,7 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
   live `sessionQuery` 在派发前采集；采集失败保持 queued，不回滚前台 canonical plan。
 - Adapter 统一拥有 finalizer 派发与恢复；不能把模型侧 Team 清单、成员 inactive 或投递 acceptance 当成工作完成。当前 role 复用决策见 [delegation ownership](<dsh-delegation-contract-ownership.md>)，native one-shot 去重只是兼容分支。Core 仍是 job、claim、材料与终态的唯一 owner。
 
-- Model-allowed business commands share the typed `ClawCommandService` contract and real registry/focus preparation across daemon and one-shot CLI baseline; only known unsupported or proven pre-send transport gaps authorize fallback. Unknown-outcome mutation must not be replayed. Internal/admin operations remain outside model authority. See `../features/dsh-claw-run-route-guidance.md` for the current route.
+- Model-allowed business commands share the typed `ClawCommandService` contract and real registry/focus preparation across the in-process persistent session and one-shot CLI baseline; only known unsupported or proven pre-send transport gaps authorize fallback. Unknown-outcome mutation must not be replayed. Internal/admin operations remain outside model authority. See `../features/dsh-claw-run-route-guidance.md` for the current route.
 - The adapter recovers queued dispatch on subsequent system entry using canonical per-job execution evidence and backend-appropriate reconciliation; same-claim Core receipts recover a lost claim response without a second assignment run. A lost child after claim or lost external write acknowledgement remains outside exactly-once guarantees without destination idempotence.
 
 ## Alternatives
@@ -72,7 +72,7 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
   历史读取成功但没有 eligible ordinary user/assistant text message 时可发布真实空 capture，历史读取失败不能伪装空材料；跨宿主采集边界见 [finalizer conversation capture Truth](../features/finalizer-conversation-capture.md)。
   Codex/Cindy 的 collector 合同与 DSH 的父端采集差异由
   [report-collection ADR](<adapter-owned-report-collection.md>) 拥有，本文不再拥有另一套采集规则。
-- `SUPPORTED_CLAW_HOSTS` 增加 `"dsh"`，`compactPlanCommandResult` 与 daemon 路径的
+- `SUPPORTED_CLAW_HOSTS` 增加 `"dsh"`，`compactPlanCommandResult` 与 session 路径的
   hostActions 门控统一走 `isHostActionsHost`；Codex/DSH 的 compact 输出语义一致。
 - Native one-shot job 不在执行中迁移；它继续使用自己的完整 finalizeId label、旧 label 兼容与 service-level child catalog。可复用 role 则必须使用匹配的 CLI/Core 完整 delegate 身份合同，不能从 one-shot 的短标题兼容行为推导跨 job 安全性。
 - 前台在父计划终态和 adapter 异步派发回执后即可答复，不把后台 finalizer 纳入前台必要结果的 Team 等待链。成功接收不代表知识写入成功；未知结果不能授权重发，source 测试也不能证明运行 profile 已激活。
@@ -125,7 +125,7 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
 - `packages/dsh-adapter/`（`src/index.ts`、`src/claw-session.ts`、`src/host-actions.ts`）
 - `packages/cli/src/invocation-host.ts`（`isHostActionsHost` / `isSubagentPolicyHost`）
 - `packages/cli/src/cli.ts`（`buildKnowledgeDispatch` 的 dsh 分支、compact 门控）
-- `packages/cli/src/command-service.ts`（daemon 路径 hostActions 门控）
+- `packages/cli/src/command-service.ts`（session 路径 hostActions 门控）
 - `packages/core/src/knowledge-sidecar.ts`（`KnowledgeFinalizationHost` 增加 `"dsh"`）
 - `packages/core/resources/dsh-delegate-writer/TEMPLATE.json`
 - `docs/dsh-plugin-integration-research.md`

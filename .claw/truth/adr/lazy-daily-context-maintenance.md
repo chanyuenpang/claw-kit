@@ -2,7 +2,7 @@
 
 ## Context
 
-项目 task、受管临时文件、运行日志和用户级 session workflow 会在正常 CLI 使用中累积。日期 task 的归档与裁剪仍可能留下空的日期容器，completion refresh 的状态日志也会持续增长。立即在每次命令调用时清理会重复扫描和增加干扰；依赖操作系统计划任务则引入安装副作用、后台进程及跨项目调度责任。清理还必须避免活动 session、可重试的 knowledge-finalization job、运行中的 completion refresh、daemon 状态和模型缓存。
+项目 task、受管临时文件、运行日志和用户级 session workflow 会在正常 CLI 使用中累积。日期 task 的归档与裁剪仍可能留下空的日期容器，completion refresh 的状态日志也会持续增长。立即在每次命令调用时清理会重复扫描和增加干扰；依赖操作系统计划任务则引入安装副作用、后台进程及跨项目调度责任。清理还必须避免活动 session、可重试的 knowledge-finalization job、运行中的 completion refresh、session registry 记录和模型缓存。
 
 ## Decision
 
@@ -19,7 +19,7 @@
 - 每次 `claw context` 都无条件清理：拒绝，因为同日重复扫描项目和共享 session runtime 没有相应收益。
 - 让 completion-refresh 日志只随 task retention 删除：拒绝，因为日志位于 project-level `.claw/logs/`，不属于任何单个 task directory，无法由 task archive/pruning 提供有界生命周期。
 - 清空全部旧日志目录后再由运行方重建锁：拒绝，因为 `inflight.lock` 是运行中 refresh 的 leader / single-flight 状态；跨入该目录会把垃圾回收与并发正确性耦合。
-- 将系统临时 daemon 状态、用户级模型缓存或全部 runtime 数据纳入 sweep：拒绝，因为这些位置不等同于可安全回收的 workflow 状态，可能影响仍在运行的服务或有效缓存。
+- 将 session registry 记录、用户级模型缓存或全部 runtime 数据纳入 sweep：拒绝，因为这些位置不等同于可安全回收的 workflow 状态，可能影响仍在运行的服务或有效缓存。
 
 ## Consequences
 

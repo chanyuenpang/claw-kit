@@ -14,7 +14,7 @@ collector contract v1；当前实现事实由
 ## Decision
 
 - 每个 Host adapter 拥有其 Host history 的定位、解析、真实 turn final 判定和 report payload 形态。Codex/Cindy 保留版本化 collector process；DSH Desktop 在父会话终态或 queued 恢复入口使用当前 Host 的受信 `sessionQuery` 自动采集，通过私有 CLI stdin 提交规范 final 事件，不持久保存可执行 collector descriptor。Core/CLI 不解释 Host message DTO；DSH CLI 仅对已规范化的报告行去重并保留既有 task conclusions。
-- Codex/Cindy collector 仅向 CLI 指定的 staging report 路径写 opaque payload。DSH live adapter 经私有 stdin 向当前 CLI 进程提交已证明的 final 事件，由 CLI 在 plan.report 同目录完成暂存和原子发布。stdout、daemon JSON 与诊断不传递采集内容；adapter 不直接写 canonical report、knowledge job、claim token、Truth 或 ADR。
+- Codex/Cindy collector 仅向 CLI 指定的 staging report 路径写 opaque payload。DSH live adapter 经私有 stdin 向当前 CLI 进程提交已证明的 final 事件，由 CLI 在 plan.report 同目录完成暂存和原子发布。stdout、会话传输 JSON 与诊断不传递采集内容；adapter 不直接写 canonical report、knowledge job、claim token、Truth 或 ADR。
 - Core/CLI 继续拥有 canonical plan/report 路径、固定 staging containment、collector contract
   version、payload byte length/SHA-256 receipt、同目录原子发布、claim token 与最终化 lifecycle。
 - Codex/Cindy collector exit code 是 completeness 的 Host-owned 证明。DSH 的父会话历史读取成功但无可信 `assistant/final` 时，空 payload 仍发布真实 capture receipt；Host 历史不可读、规范化失败或 CLI 发布失败则保持 job queued、无 token 并报告原因，绝不伪造 final_answer。

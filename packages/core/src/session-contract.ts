@@ -1,4 +1,11 @@
-export const SESSION_PROTOCOL_VERSION = 1;
+/**
+ * Shared session command contract.
+ *
+ * These types describe the adapter-facing session protocol payloads. They are
+ * transport-neutral: the same shapes are served in-process by `claw session
+ * open` and consumed by host adapters over stdio JSONL. The former TCP daemon
+ * request/response and protocol-version types were removed with that transport.
+ */
 
 /**
  * Shared lifecycle contract for `create_goal` and `update_goal` host actions.
@@ -172,82 +179,9 @@ export type ClawSessionCommandEnvelope<T extends ClawSessionCommand = ClawSessio
   knowledgeDispatch?: ClawKnowledgeDispatch;
 };
 
-export type SessionProtocolRequest =
-  | {
-      protocolVersion: 1;
-      requestId: string;
-      token: string;
-      operation: "session.open";
-      input: {
-        agentSessionId: string;
-        workdir: string;
-        client: SessionClientInfo;
-      };
-    }
-  | {
-      protocolVersion: 1;
-      requestId: string;
-      token: string;
-      operation: "session.open.receipt";
-      input: {
-        agentSessionId: string;
-        workdir: string;
-        client: SessionClientInfo;
-      };
-    }
-  | {
-      protocolVersion: 1;
-      requestId: string;
-      token: string;
-      operation: "session.command";
-      sessionHandle: string;
-      input: ClawSessionCommand;
-    }
-  | {
-      protocolVersion: 1;
-      requestId: string;
-      token: string;
-      operation: "session.status" | "session.close";
-      sessionHandle: string;
-      input: Record<string, never>;
-    };
-
 export type FailureDiagnostic = {
   code: string; message: string; outcome: "known" | "unknown"; phase?: string;
   effect?: "none" | "partial" | "committed" | "unknown";
   origin?: string; operation?: string; resource?: string; correlationId?: string;
   cause?: FailureDiagnostic; diagnostics?: FailureDiagnostic[];
-};
-
-export type SessionProtocolResponse =
-  | {
-      ok: true;
-      requestId: string;
-      output: unknown;
-    }
-  | {
-      ok: false;
-      requestId: string;
-      error: {
-        code: string;
-        message: string;
-        retryable: boolean;
-        outcome: "known" | "unknown";
-        phase?: string;
-        effect?: "none" | "partial" | "committed" | "unknown";
-        recoveryCommand?: string;
-        origin?: string; operation?: string; resource?: string; correlationId?: string;
-        cause?: FailureDiagnostic; diagnostics?: FailureDiagnostic[];
-        details?: Record<string, unknown>;
-      };
-    };
-
-export type SessionDaemonState = {
-  schemaVersion: 1;
-  protocolVersion: 1;
-  pid: number;
-  host: "127.0.0.1";
-  port: number;
-  token: string;
-  startedAt: string;
 };
