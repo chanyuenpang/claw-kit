@@ -1,3 +1,5 @@
+保持工具的简单好用，对于所有增加工具复杂性的方案，都应该三思而后行。
+
 # Repository delivery policy
 
 The repository owner uses direct delivery by default.

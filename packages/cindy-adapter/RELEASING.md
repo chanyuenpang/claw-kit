@@ -13,8 +13,10 @@ artifact-only marketplace delivery target; users keep the same market URL.
 3. Build from that exact source revision into a fresh isolated directory:
    `npm run export:cindy-plugin -- --output-root <artifact-root>`. The output contains
    the marketplace catalog, `plugin/` without public skill files or registrations,
-   and an input/payload hash receipt. Its `node/shared-skills-contract.json` pins
-   the independently built `@veewo/claw-skills` version and complete content hashes.
+   and input/payload provenance. Private `node/shared-skills.json` identifies the
+   independent package and tested minimum, not an exact global snapshot. The trusted
+   plugin initializer uses existing Node capabilities; the npm package remains
+   data-only. There is no bundled skill registration or user-facing install tool.
    Build the shared artifact from the same source revision with
    `npm run export:shared-skills -- <fresh-shared-root>`, pack and freeze it alongside
    the plugin. The shared package currently reuses the standard seven-skill inputs.
@@ -34,9 +36,10 @@ artifact-only marketplace delivery target; users keep the same market URL.
 
 The marketplace payload remains `plugin/`; no `.cindy` archive or GitHub Release
 is needed for marketplace installation. The public skills are a separate npm
-artifact, installed explicitly through `install_skills` after the Host reconciles
-old plugin registrations. Manifest v3 retains workflow capabilities and adds a
-repair notification (minimum declared Cindy version 0.1.61). Verify migration and
-fresh-session loading on the actual Host before delivery. Source ref and artifact
+artifact, prepared automatically by the plugin at resident startup through
+existing Cindy APIs. Do not modify/publish Cindy or invent a new Host compatibility
+floor. Confirm startup preparation success, ordinary workflow behavior during a
+failed/pending preparation, non-downgrade and fresh-session skill loading before
+delivery. Market-install success alone is not preparation/loading evidence. Source ref and artifact
 ref are different: do not require artifact HEAD to equal the main source commit.
 Building/exporting alone never authorizes commit, push, remote creation or installation.

@@ -19,7 +19,7 @@ Bundling adapters own small `skill-inputs.json` declarations. The shared npm art
 | Codex / DSH | 9 each | Existing public set, including each host's update |
 | OpenCode | 8 | No manual capture |
 | Standard | 7 | Same seven canonical project packages |
-| Shared npm / Cindy global install | 7 | Complete canonical packages; no Cindy plugin skill registrations |
+| Shared npm / Cindy global install | 7 | Independent data package; the plugin prepares globals at resident startup using existing Cindy Node APIs; no Host changes, plugin skill registrations or manual repair tools |
 | OpenClaw | 1 | claw-kit-doc only |
 
 ## Build and check

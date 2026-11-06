@@ -4,7 +4,6 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { loadSkillInputs, assertArtifactOutput } from "./skill-artifacts.mjs";
-import skillInstaller from "../packages/shared-skills/installer.cjs";
 
 const pluginAssets = ["ghost.json", "main.js", "panel.html", "assets", "node"];
 
@@ -65,15 +64,17 @@ export async function buildCindyPluginArtifact({ sourceRoot, outputRoot } = {}) 
     const pluginDir = path.join(stage, "plugin");
     const assembly = await loadSkillInputs({ sourceRoot, targetHost: "standard" });
     for (const asset of pluginAssets) await copyTree(path.join(adapter, "plugin", asset), path.join(pluginDir, asset));
-    await copyTree(path.join(sourceRoot, "packages/shared-skills/installer.cjs"), path.join(pluginDir, "node/shared-skills.cjs"));
     await copyTree(path.join(sourceRoot, "packages/shared-skills/node-runtime.cjs"), path.join(pluginDir, "node/node-runtime.cjs"));
     if (manifest.skill || manifest.slots?.includes("skill")) throw new Error("Cindy must load shared skills, not register bundled skills.");
+    if (manifest.globalSkills !== undefined) throw new Error("Cindy artifacts must use existing Host APIs, not globalSkills.");
     const sharedPackage = JSON.parse(await fs.readFile(path.join(sourceRoot, "packages/shared-skills/package.json"), "utf8"));
-    const skills = {};
-    for (const skill of assembly.skills) skills[skill.id] = await skillInstaller.fingerprint(skill.sourcePath);
-    const contract = { schemaVersion: 1, name: sharedPackage.name, version: sharedPackage.version, sourceHash: assembly.sourceHash, skills };
+    // Private plugin data, not a field requiring a new Cindy Host protocol.
+    const adapterPackage = JSON.parse(await fs.readFile(path.join(sourceRoot, "packages/cindy-adapter/package.json"), "utf8"));
+    const requirement = adapterPackage.sharedSkills;
+    if (requirement?.package !== sharedPackage.name || !/^\d+\.\d+\.\d+$/.test(requirement.minVersion))
+      throw new Error("Cindy adapter must declare its private shared-skill minimum.");
+    await fs.writeFile(path.join(pluginDir, "node/shared-skills.json"), JSON.stringify(requirement, null, 2) + "\n");
     if ((await loadSkillInputs({ sourceRoot, targetHost: "standard" })).sourceHash !== assembly.sourceHash) throw new Error("Shared skill inputs changed during assembly.");
-    await fs.writeFile(path.join(pluginDir, "node/shared-skills-contract.json"), JSON.stringify(contract, null, 2) + "\n");
     await copyTree(path.join(adapter, ".agents", "plugins", "marketplace.json"), path.join(stage, ".agents", "plugins", "marketplace.json"));
     const market = JSON.parse(await fs.readFile(path.join(stage, ".agents", "plugins", "marketplace.json"), "utf8"));
     if (!market.plugins?.some(item => item.name === "claw-kit-cindy" && item.source?.source === "local" && item.source.path === "./plugin")) throw new Error("Invalid Cindy artifact marketplace.");

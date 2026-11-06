@@ -51,6 +51,15 @@ Refreshing the installed market updates available source metadata. It does not
 install the plugin update; the user must return to the plugin page and accept
 the claw-kit update separately. Do not download or open a `.cindy` archive.
 
+When the enabled plugin starts, its existing Node entry automatically prepares
+the independent global `@veewo/claw-skills` package. No extra skill-install tool,
+component selection or new Cindy Host API is required. Official same-named skills
+are replaced without backups; older plugins do not downgrade a compatible newer
+global package. Preparation failure is notified without blocking ordinary workflow
+calls. This is startup work, not a promise that the market installation window
+waited for it. Follow the preparation notification and verify new-session loading;
+old running engines are not forcibly restarted or hot-reloaded.
+
 ## OpenCode
 
 Use the OpenCode adapter's `update` skill for an authorized update. Refresh the

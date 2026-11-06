@@ -73,7 +73,10 @@ test("Cindy unavailable tools and missing session identity expose host without f
   await h.handle({ type: "tool-call", tool: "list_tools", callId: "catalog", args: {} });
   await h.handle(invocation());
   await h.handle({ type: "tool-call", tool: "call_tool", callId: "missing-session", args: { name: "plan.show" } });
-  for (const response of h.sent) {
+  // Startup notifications are independent from the three requested tool replies.
+  const responses = h.sent.filter(response => response.type !== "notify");
+  assert.equal(responses.length, 3);
+  for (const response of responses) {
     assert.equal(response.ok, false);
     assert.match(response.message, /^\[claw host\]\nplatform: cindy\n/);
     assert.doesNotMatch(response.message, /workflow snapshot is recovered/);

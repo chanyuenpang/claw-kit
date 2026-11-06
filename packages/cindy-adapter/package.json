@@ -17,5 +17,9 @@
     "type": "git",
     "url": "https://github.com/chanyuenpang/claw-kit.git",
     "directory": "packages/cindy-adapter"
+  },
+  "sharedSkills": {
+    "package": "@veewo/claw-skills",
+    "minVersion": "0.2.66"
   }
 }

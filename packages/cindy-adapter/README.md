@@ -42,12 +42,38 @@ workflow, failure policy, permission boundary, and acceptance scenarios.
 
 The Ghost runtime source is under [plugin](plugin). Build the installable tree
 with `npm run export:cindy-plugin -- --output-root <fresh-output-directory>`
-from the main repository: it combines runtime assets with an exact shared-skill
-package contract, without bundling or registering public skills. The plugin uses
-manifest v3 (Cindy >= 0.1.61) to retain its existing capabilities and declare the
-startup repair notification. `skills_status` checks only local files;
-`install_skills` explicitly installs the pinned `@veewo/claw-skills` npm version.
-See [shared installation and migration](../shared-skills/README.md).
+from the main repository. The existing resident entry automatically prepares the
+independent `@veewo/claw-skills` data package through a private Node request when
+the plugin starts. The tested minimum is maintained in this adapter package
+metadata (`sharedSkills`) and assembled into `node/shared-skills.json`; it is
+independent of CLI and next shared-package version numbers. When a skill update
+must reach Cindy users, raise this minimum to that tested shared release before
+freezing; retaining an older minimum explicitly permits its compatible cached data.
+It is not a new Host manifest field. Public skills are not bundled or registered in plugin skill slots.
+
+No Cindy application source, protocol, or release is changed. Existing Node/notify
+capabilities and the existing minimum Cindy version remain in use. Preparation
+uses the locally installed Node/npm (the CLI remains a separate dependency); npm
+acquires data in a temporary prefix with scripts disabled, never a global CLI
+installation. A complete compatible global package needs no network.
+
+Official same-named directories are replaced without backups or edit conflicts;
+a newer compatible global package is not downgraded. Failures produce one
+notification and do not block ordinary workflow calls or replay installation.
+There are no user-invoked skill installation/repair tools.
+
+The initializer is the file-delivery owner, not a workflow authorization preflight.
+It captures the OS-user global root (including configured root links), validates
+package identity, declared names and incoming hashes before destructive replacement,
+and uses one exclusive package lock plus the last completed release as its delivery
+identity/version floor. These checks prevent writes outside the selected official
+directories, corrupted delivery and old-request downgrades before they happen.
+False positives or invalid state fail only this package preparation with code/phase
+and a notification; no session, plan, task or other tool is denied. Installed edits
+are a reapplication trigger, never an authorization/conflict veto. This runs after plugin
+startup, not inside the market installation transaction, and does not force an
+already-running engine to reload its skill snapshot. Verify new-session loading
+on the actual Host before claiming it. See the [shared data contract](../shared-skills/README.md).
 The separate skill artifact must be built and published under explicit release
 authorization before the online installation can succeed. Cindy normalizes either
 configured knowledge execution policy to the compatibility value `subagent`; the active

@@ -28,6 +28,26 @@ function withCindyHostIdentity(result) {
 }
 
 const workdirs = new Map();
+
+async function prepareSharedSkillsAtStartup() {
+  let notice;
+  try {
+    const result = await nodeRequest('claw/prepare-skills', {}, 120000);
+    if (!result?.ok) {
+      const code = result?.errorCode || 'SKILLS_PREPARE_FAILED';
+      traceHook('skills-prepare', { errorCode: code, phase: result?.phase || 'prepare' });
+      notice = { type: 'notify', tone: 'warning', text: 'claw-kit 全局技能自动准备未完成（' + code + '）。检查 Node/npm、网络或目录权限后重新启用插件可重试；普通工作流不受阻断。' };
+    } else if (result.installed) {
+      notice = { type: 'notify', tone: 'info', text: 'claw-kit 全局技能已准备完成（' + result.version + '）。技能加载仍遵循 Cindy 原有会话机制。' };
+    }
+  } catch (error) {
+    traceHook('skills-prepare', { errorCode: error?.code || 'SKILLS_PREPARE_UNAVAILABLE' });
+    notice = { type: 'notify', tone: 'warning', text: 'claw-kit 全局技能初始化暂未完成，请检查插件运行状态后重新启用；不会阻断普通工作流。' };
+  }
+  // A notification failure is not permission to replay either send or installation.
+  if (notice) try { await cindy.send(notice); } catch { traceHook('skills-notice', { errorCode: 'NOTICE_UNAVAILABLE' }); }
+}
+
 const reconcilingSessions = new Set();
 const projections = new Map();
 // Cindy has no public native Goal API. This is the adapter-owned continuation
@@ -113,8 +133,7 @@ async function runSessionMaintenance(sessionId, workdir) {
 
 async function prepareSessionBackground(sessionId, workdir) {
   if (!sessionId) return;
-  // Advisory and independent of workflow recovery. Never install/download in a hook.
-  void checkSharedSkills();
+  // Skills prepare once at plugin initialization, independently of chat/workflow calls.
   if (workdir) workdirs.set(sessionId, workdir);
   try {
     if (!workdir) {
@@ -136,20 +155,6 @@ async function prepareSessionBackground(sessionId, workdir) {
       phase: 'background-failed',
       reason: error instanceof Error ? error.message : String(error),
     });
-  }
-}
-
-let sharedSkillsNotice = '';
-async function checkSharedSkills() {
-  try {
-    const result = await nodeRequest('claw/skills-status', {});
-    if (result?.compatible) { sharedSkillsNotice = ''; return; }
-    const key = result?.status || result?.errorCode || 'unavailable';
-    if (sharedSkillsNotice === key) return;
-    sharedSkillsNotice = key;
-    await cindy.send({ type: 'notify', tone: 'warning', text: 'claw-kit 共享技能需要修复。请调用 skills_status 查看原因，再显式调用 install_skills。安装后新建会话验证；正常工作流可继续。' });
-  } catch (error) {
-    traceHook('skills-check', { reason: String(error) });
   }
 }
 
@@ -399,21 +404,6 @@ function toolFailure(callId, reason, errorCode = 'CLAW_OPERATION_FAILED', failur
 }
 
 async function dispatchToolCall(msg) {
-  if (msg.tool === 'skills_status' || msg.tool === 'install_skills') {
-    const context = msg.args?.session_context;
-    if (!context?.session_id || !context?.workdir || !context.workdir_is_local) {
-      toolFailure(msg.callId, '共享技能操作需要 Cindy 提供本地会话身份。', 'LOCAL_WORKSPACE_REQUIRED');
-      return;
-    }
-    if (msg.tool === 'install_skills' && context.workdir_is_read_only) {
-      toolFailure(msg.callId, '当前会话只读，无法安装全局技能。请在可写的本地会话中执行。', 'WORKSPACE_READ_ONLY');
-      return;
-    }
-    const result = await nodeRequest(msg.tool === 'skills_status' ? 'claw/skills-status' : 'claw/skills-install', {}, 120000);
-    if (!result?.ok) { toolFailure(msg.callId, result?.reason || '共享技能操作失败。', result?.errorCode || 'SKILLS_INSTALL_FAILED', result); return; }
-    cindy.send({ type: 'tool-result', callId: msg.callId, ok: true, result: withCindyHostIdentity(result) });
-    return;
-  }
   if (msg.tool === 'list_tools') {
     const catalog = await nodeRequest('claw/catalog', { workdir: msg.args?.session_context?.workdir });
     if (!catalog?.categories) {
@@ -561,3 +551,6 @@ cindy.onHostMessage(async (msg) => {
   }
 
 });
+
+// Existing resident entry: no new Host API, no user-invoked installation tool.
+void prepareSharedSkillsAtStartup();

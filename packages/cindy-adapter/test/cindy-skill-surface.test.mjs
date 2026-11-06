@@ -21,7 +21,15 @@ test('Cindy plugin delegates complete skill distribution to the independent shar
   assert.equal(manifest.sessionContext, true);
   assert.equal(manifest.notify, true);
   await assert.rejects(readFile(new URL('skills/planning/SKILL.md', root)), { code: 'ENOENT' });
-  assert.deepEqual(JSON.parse(await readFile(new URL('node/shared-skills-contract.json', root))), shared.manifest);
+  const adapterPackage = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(manifest.globalSkills, undefined);
+  assert.equal(adapterPackage.sharedSkills.package, shared.manifest.name);
+  assert.deepEqual(JSON.parse(await readFile(new URL('node/shared-skills.json', root))), adapterPackage.sharedSkills);
+  assert.ok(!manifest.tools.some(tool => ['skills_status', 'install_skills'].includes(tool.name)));
+  await readFile(new URL('node/shared-skills.cjs', root));
+  for (const file of ['node/shared-skills-contract.json']) {
+    await assert.rejects(readFile(new URL(file, root)), { code: 'ENOENT' });
+  }
 
   for (const entry of [
     'skills/using-claw-kit/SKILL.md',
@@ -134,16 +142,13 @@ test('Cindy uses the supported entry rewrite and keeps session-start work asynch
   assert.match(skill, /If the terminal result contains a `knowledgeDispatch`/);
   assert.doesNotMatch(skill, /Session scope is temporary/);
   assert.doesNotMatch(skill, /Project-scoped plans/);
-  assert.match(skill, /get_workspace_info/);
-  assert.match(skill, /cindy_orca\.start_team/);
-  assert.match(skill, /cindy_orca\.create_worker/);
-  assert.match(skill, /Do not\s+send a later dispatch to an existing Worker/i);
+  // Source-plan handoff replaced the historical claim job and fixed tool namespace.
+  assert.match(skill, /source-plan `knowledgeDispatch`/);
+  assert.match(skill, /`start_team`.*`create_worker`/s);
   assert.match(skill, /knowledge_finalizer/);
-  assert.match(skill, /Do not wait for the Worker/i);
-  assert.match(skill, /Immediately finish the main response after that acknowledgement/i);
-  assert.match(skill, /without polling or reading the\s+Worker/i);
-  assert.match(skill, /job already exists/i);
-  assert.match(skill, /knowledge\.claim/);
+  assert.match(skill, /knowledge\.materials/);
+  assert.match(skill, /No claim, token, receipt/);
+  assert.match(skill, /without\s+waiting or polling/);
   assert.doesNotMatch(skill, /did-turn-end[^\n]*(capture|create).*job/i);
 });
 

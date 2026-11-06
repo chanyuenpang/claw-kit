@@ -76,8 +76,20 @@ export async function verifyCandidate(directory, { ready = false, now = Date.now
       if (family === "dsh") assert(entry.npmVersion === npmVersionOf(entry.version) && actual[entry.file], "Invalid frozen DSH identity.");
       if (family === "cindy" && entry.sharedSkills) {
         assert(entry.sharedSkills.name === "@veewo/claw-skills" && actual[entry.sharedSkills.file], "Missing frozen shared skills package.");
-        const contract = await json(path.join(directory, "artifacts", entry.directory, "plugin/node/shared-skills-contract.json"));
-        assert(contract.version === entry.sharedSkills.version && contract.sourceHash === entry.sharedSkills.sourceHash, "Cindy shared skills contract differs from frozen package.");
+        const plugin = await json(path.join(directory, "artifacts", entry.directory, "plugin/ghost.json"));
+        assert(!plugin.globalSkills, "Cindy artifacts must not require the withdrawn Host globalSkills API.");
+        const requirementPath = path.join(directory, "artifacts", entry.directory, "plugin/node/shared-skills.json");
+        const requirement = await json(requirementPath).catch(error => { if (error.code === "ENOENT") return null; throw error; });
+        if (requirement) {
+          const metadata = await json(path.join(directory, "artifacts", entry.directory, "artifact.json"));
+          assert(requirement.package === entry.sharedSkills.name && /^\d+\.\d+\.\d+$/.test(requirement.minVersion)
+            && entry.sharedSkills.version.localeCompare(requirement.minVersion, "en", { numeric: true }) >= 0
+            && metadata.skillSourceHash === entry.sharedSkills.sourceHash, "Cindy private skill requirement differs from frozen package.");
+        } else {
+          // Previously frozen candidates retain their unchanged legacy contract.
+          const contract = await json(path.join(directory, "artifacts", entry.directory, "plugin/node/shared-skills-contract.json"));
+          assert(contract.version === entry.sharedSkills.version && contract.sourceHash === entry.sharedSkills.sourceHash, "Cindy shared skills contract differs from frozen package.");
+        }
       }
     }
   }

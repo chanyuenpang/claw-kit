@@ -176,3 +176,36 @@ test("real npm packing and local installation preserve candidate bytes without a
   assert.deepEqual((await verifyCandidate(directory)).candidate.files, before);
   assert.equal(git(root, "remote"), "");
 });
+
+for (const legacy of [false, true]) {
+  test('Cindy frozen candidate verifies ' + (legacy ? 'unchanged legacy snapshot' : 'private minimum without a Host extension'), async t => {
+    const { directory, candidate } = await fixture(t);
+    const artifacts = path.join(directory, 'artifacts');
+    const shared = { name: '@veewo/claw-skills', version: '0.2.66', file: 'shared.tgz', sourceHash: 'a'.repeat(64) };
+    const plugin = { version: candidate.version + '.0' };
+    const requirement = { package: shared.name, minVersion: '0.2.65' };
+    await write(path.join(artifacts, 'shared.tgz'), 'frozen fixture package bytes');
+    await write(path.join(artifacts, 'cindy/plugin/ghost.json'), plugin);
+    await write(path.join(artifacts, 'cindy/artifact.json'), { skillSourceHash: shared.sourceHash });
+    if (legacy) await write(path.join(artifacts, 'cindy/plugin/node/shared-skills-contract.json'), { version: shared.version, sourceHash: shared.sourceHash });
+    else await write(path.join(artifacts, 'cindy/plugin/node/shared-skills.json'), requirement);
+    Object.assign(candidate, { schemaVersion: 2, state: 'frozen', packages: [], selected: ['cindy'], versions: { cindy: { version: plugin.version } },
+      artifacts: { cindy: { directory: 'cindy', version: plugin.version, sharedSkills: shared } }, files: await inventory(artifacts) });
+    await write(path.join(directory, 'candidate.json'), candidate);
+    assert.equal((await verifyCandidate(directory)).candidate.artifacts.cindy.sharedSkills.version, shared.version);
+    if (!legacy) {
+      requirement.minVersion = '0.2.67';
+      await write(path.join(artifacts, 'cindy/plugin/node/shared-skills.json'), requirement);
+      candidate.files = await inventory(artifacts);
+      await write(path.join(directory, 'candidate.json'), candidate);
+      await assert.rejects(verifyCandidate(directory), /private skill requirement differs/);
+      requirement.minVersion = '0.2.65';
+      await write(path.join(artifacts, 'cindy/plugin/node/shared-skills.json'), requirement);
+      plugin.globalSkills = requirement; // Withdrawn Host-dependent proposal must never publish.
+      await write(path.join(artifacts, 'cindy/plugin/ghost.json'), plugin);
+      candidate.files = await inventory(artifacts);
+      await write(path.join(directory, 'candidate.json'), candidate);
+      await assert.rejects(verifyCandidate(directory), /withdrawn Host globalSkills/);
+    }
+  });
+}

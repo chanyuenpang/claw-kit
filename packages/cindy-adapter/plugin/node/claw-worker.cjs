@@ -1046,6 +1046,7 @@ function reply(id, result) {
   process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id, result })}\n`);
 }
 
+let sharedSkillPreparation; // One initialization per resident worker; never replay after an unknown outcome.
 const rpcInput = readline.createInterface({ input: process.stdin });
 rpcInput.on('line', async (line) => {
   let request;
@@ -1056,16 +1057,12 @@ rpcInput.on('line', async (line) => {
     catch (error) { reply(request.id, { ok: false, errorCode: error.code || 'ENTRY_HOOK_CLAIM_FAILED', reason: error.message }); }
     return;
   }
-  if (request.method === 'claw/skills-status' || request.method === 'claw/skills-install') {
+  if (request.method === 'claw/prepare-skills') {
     try {
-      const installer = require('./shared-skills.cjs');
-      const expected = require('./shared-skills-contract.json');
-      const result = request.method === 'claw/skills-status'
-        ? await installer.status({ expected })
-        : await installer.downloadAndInstall({ expected });
-      reply(request.id, { ok: true, ...result });
+      sharedSkillPreparation ||= require('./shared-skills.cjs').prepareSharedSkills({ minimum: require('./shared-skills.json') });
+      reply(request.id, await sharedSkillPreparation);
     } catch (error) {
-      reply(request.id, { ok: false, errorCode: error.code || 'SKILLS_INSTALL_FAILED', phase: error.phase || request.method, reason: error.message, ...(error.recovery ? { recovery: error.recovery } : {}) });
+      reply(request.id, { ok: false, errorCode: error.code || 'SKILLS_PREPARE_FAILED', phase: error.phase || 'prepare' });
     }
     return;
   }

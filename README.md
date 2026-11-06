@@ -51,7 +51,7 @@ The harness joins a repository after that repository is initialized for `.claw`.
 | Claude Code | `claw` CLI plus the standard skills. No dedicated adapter. Install, `claw init`, then talk. Bootstrap is the instruction file Claude Code actually reads: `CLAUDE.md`, or `AGENTS.md` when the project has no `CLAUDE.md`. | Universal path, [feedback welcome](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) |
 | DeepSeek Harness (DSH) | Dedicated adapter. One `claw_run` tool, progress and native goal sync, knowledge closeout dispatched by the adapter. npm: `@veewo/dsh-claw-kit`. | Stable |
 | Codex | Dedicated adapter. Marketplace plugin with skills, hooks, and the same workflow. | Stable |
-| Cindy | Dedicated adapter. Install `claw-kit-cindy` from the Cindy marketplace. | Stable |
+| Cindy | Dedicated adapter. The plugin prepares independent global skills automatically at startup through existing Node capabilities. | Plugin-only source implementation; no Cindy app changes or new Host API |
 | OpenCode | Dedicated adapter. Plugin, shim, agents, and skills. | Adapter available, testing |
 
 DeepSeek Harness, Codex and Cindy are stable — a team already uses them to write code every day. OpenCode has an adapter that is still being tested. Other platforms: please try it and [open an issue](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) or PR if anything breaks.
