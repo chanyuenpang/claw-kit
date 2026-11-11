@@ -1,6 +1,6 @@
 {
   "name": "@veewo/claw-core",
-  "version": "0.2.71",
+  "version": "0.2.72",
   "type": "module",
   "description": "Core workflow primitives for .claw project planning, recall, truth ingestion, and task closeout.",
   "keywords": [
