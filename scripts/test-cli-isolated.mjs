@@ -8,6 +8,8 @@ import { removeTestDirectory } from '../packages/cli/dist-test/fixture-cleanup.j
 const packageRoot = fileURLToPath(new URL('../packages/cli/', import.meta.url));
 const parent = path.resolve(os.tmpdir());
 const temporary = await fs.mkdtemp(path.join(parent, 'claw-cli-suite-'));
+// Temporary CommonJS shims must not inherit the user's home package type.
+await fs.writeFile(path.join(temporary, 'package.json'), JSON.stringify({ private: true, type: 'commonjs' }));
 let status = 1;
 try {
   status = await new Promise((resolve, reject) => {

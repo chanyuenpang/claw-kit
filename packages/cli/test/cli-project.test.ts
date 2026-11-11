@@ -211,6 +211,19 @@ test("cli context omits healthy matching version information", () => {
   assert.equal("projectConfig" in (result.project as JsonRecord), false);
 });
 
+test("CLI context restores the bound workflow despite a legacy maintenance lock", () => {
+  const root = createFixture("context-legacy-maintenance-lock");
+  runClaw(["init", "--name", "Context legacy lock", "--planning", "false"], root);
+  const env = { CLAW_SESSION_ID: "mutex-recovery-session" };
+  const created = runClaw(["plan", "create", "Recover bound workflow"], root, env);
+  const lockPath = path.join(root, ".claw", "runtime", "maintenance.json.lock");
+  fs.writeFileSync(lockPath, "");
+  const restored = runClaw(["context"], root, env);
+  assert.ok(restored.activeWorkflow, JSON.stringify(restored));
+  assert.equal((restored.activeWorkflow as JsonRecord).planPath, created.planPath);
+  assert.equal(fs.readFileSync(lockPath, "utf8"), "");
+});
+
 test("CLI context owns daily maintenance after creation performs only necessary setup", async () => {
   const root = createFixture("context-daily-maintenance");
   const sessionRuntime = path.join(root, "session-runtime");
@@ -361,6 +374,7 @@ test("cli context auto-corrects malformed existing .claw state", () => {
     autoUpdate: true,
     externalDocPaths: [],
     embedding: {
+      enabled: false,
       provider: "local",
       model: "jinaai/jina-embeddings-v2-base-zh",
     },
@@ -566,6 +580,7 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
     autoUpdate: true,
     externalDocPaths: [],
     embedding: {
+      enabled: false,
       provider: "local",
       model: "jinaai/jina-embeddings-v2-base-zh",
     },

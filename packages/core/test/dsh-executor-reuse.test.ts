@@ -145,12 +145,18 @@ test("expired admitted first claim binds its delegate for a no-token end.leave r
   assert.equal(releaseDshFinalizerExecution({ project: f.project, jobPath, actorSessionId: f.member }).released, true);
 });
 
-test("queue freezes the parent report upper bound instead of delayed writer time", (t) => {
+test("new DSH source end does not queue or rewrite a legacy report job", (t) => {
   const f = fixture(t), original = f.job("3".repeat(64));
   const planPath = readKnowledgeFinalizationJob(original).planPath;
+  const before = fs.readFileSync(original, "utf8");
   const endedAt = new Date(Date.now() - 2000).toISOString();
-  const result = tryEndKnowledgePlan({ project: f.project, sessionId: "capture-parent", endedPlanPath: planPath,
-    endedAt, host: "dsh", writer: {  } });
+  const end = () => tryEndKnowledgePlan({ project: f.project, sessionId: "capture-parent",
+    endedPlanPath: planPath, endedAt, host: "dsh" });
+  const result = end();
   assert.equal(result.ok, true);
-  assert.equal(readKnowledgeFinalizationJob(result.jobPath!).reportCapture?.endedAt, endedAt);
+  assert.match(result.finalizeId ?? "", /^[a-f0-9]{64}$/);
+  assert.deepEqual(end(), result, "a stable source boundary has one dedup key");
+  assert.equal(result.jobPath, undefined);
+  assert.equal(fs.readFileSync(original, "utf8"), before);
+  assert.equal(inspectDshFinalizerExecutions({ project: f.project, parentSessionId: "capture-parent" }).length, 0);
 });

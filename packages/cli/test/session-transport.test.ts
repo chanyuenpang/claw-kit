@@ -384,7 +384,7 @@ test("persistent session preserves post-commit host actions in the typed command
     }]);
     assert.equal("policy" in (done.knowledgeDispatch as object), false);
     assert.match(
-      String(done.knowledgeDispatch?.finalizeId),
+      String(done.knowledgeDispatch?.dispatchId),
       /^[a-f0-9]{64}$/,
     );
   } finally {
@@ -410,10 +410,10 @@ test("Cindy persistent sessions coerce background config to the templated no-Sto
     });
     const dispatch = done.knowledgeDispatch;
     assert.equal("policy" in (dispatch ?? {}), false);
-    assert.match(String(dispatch?.prompt), /knowledge\.claim/);
-    assert.match(String(dispatch?.prompt), /non-capturing auxiliary plan/i);
-    assert.match(String(dispatch?.prompt), /assignment subplan/i);
-    assert.match(String(dispatch?.prompt), /claw-kit.*Ghost/is);
+    assert.match(String(dispatch?.prompt), /knowledge\.materials/);
+    assert.match(String(dispatch?.prompt), /auxiliary plan with knowledge_capture=false/i);
+    assert.match(String(dispatch?.prompt), /governance subplan/i);
+    assert.match(String(dispatch?.prompt), /Cindy Ghost/is);
     assert.doesNotMatch(String(dispatch?.prompt), /did-turn-end|Stop hook|knowledge wait/i);
   } finally {
     await opened.close();
@@ -443,18 +443,16 @@ test("DSH persistent sessions coerce a fresh project's default background config
       retrospectiveSummary: "Complete",
     });
     const dispatch = done.knowledgeDispatch;
+    assert.equal(dispatch?.schemaVersion, 2);
     assert.equal("policy" in (dispatch ?? {}), false);
-    assert.match(String(dispatch?.finalizeId), /^[a-f0-9]{64}$/);
-    assert.match(String(dispatch?.prompt), /claw_run.*knowledge\.claim/);
-    assert.doesNotMatch(String(dispatch?.prompt), /plan\.create/);
-    assert.equal(dispatch?.preferReuse, true);
-    assert.ok(String(dispatch?.prompt).includes(String(dispatch?.finalizeId)));
-    const template = JSON.parse(fs.readFileSync(new URL("../../core/dist/src/resources/dsh-delegate-writer/TEMPLATE.json", import.meta.url), "utf8"));
-    assert.equal(template.scope, undefined);
-    assert.equal(template.knowledgeCapture, false);
-    for (const operation of ["knowledge.claim", "subplan.create", "knowledge.done"]) {
-      assert.ok(template.tasks.some((task: { detail: string }) => task.detail.includes(operation)));
-    }
+    assert.match(String(dispatch?.dispatchId), /^[a-f0-9]{64}$/);
+    assert.match(String(dispatch?.prompt), /claw_run knowledge.materials/);
+    assert.match(String(dispatch?.prompt), /ordinary auxiliary plan/);
+    assert.doesNotMatch(String(dispatch?.prompt), /knowledge[ .](claim|done)|claimToken/);
+    assert.equal(dispatch?.preferReuse, false);
+    assert.equal(dispatch?.sourceSessionKey, "dsh-default-dispatch");
+    assert.equal(dispatch?.sourcePlan, (done.output as { planPath: string }).planPath);
+    assert.ok(String(dispatch?.prompt).includes(String(dispatch?.sourcePlan).replaceAll("\\", "\\\\")));
     assert.doesNotMatch(String(dispatch?.prompt), /claw plan create --template-file/);
   } finally {
     await opened.close();
@@ -560,11 +558,9 @@ test("concurrent sessions for the same identity serialize through execution.queu
     });
     await acquired;
 
-    // The cross-process serialization authority is the per-session file queue.
-    assert.equal(fs.existsSync(queuePath), true);
-    const owner = JSON.parse(fs.readFileSync(queuePath, "utf8")) as { pid?: number; acquiredAt?: string };
-    assert.equal(owner.pid, process.pid);
-    assert.equal(typeof owner.acquiredAt, "string");
+    // SQLite owns occupancy; existence of an old owner JSON is not authority.
+    assert.equal(fs.existsSync(queuePath), false);
+    assert.equal(fs.existsSync(queuePath + ".mutex.sqlite"), true);
 
     let opened = false;
     const opening = openSession(runtimeRoot, projectRoot, agentSessionId, { host: "dsh", clientKind: "adapter" })
@@ -715,20 +711,21 @@ test("open exceeding the queue wait reports the queue owner failure below the ad
   const hash = createSessionIdentity(agentSessionId, projectRoot).sessionKeyHash;
   const queuePath = path.join(registry.sessionDirectory(hash), "execution.queue.json");
   fs.mkdirSync(path.dirname(queuePath), { recursive: true });
-  fs.writeFileSync(queuePath, JSON.stringify({
-    schemaVersion: 1,
-    token: "held-by-test",
-    pid: process.pid,
-    acquiredAt: new Date().toISOString(),
-  }));
+  let release!: () => void;
+  let entered!: () => void;
+  const acquired = new Promise<void>(resolve => { entered = resolve; });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const held = registry.withExecution(hash, async () => { entered(); await gate; });
+  await acquired;
   const startedAt = Date.now();
   try {
     await assert.rejects(
       openSession(runtimeRoot, projectRoot, agentSessionId, { host: "dsh", clientKind: "adapter" }),
       (error: unknown) => {
-        const failure = error as { code?: string; details?: { queuePath?: string; timeoutMs?: number } };
+        const failure = error as { code?: string; details?: { targetPath?: string; timeoutMs?: number; reason?: string } };
         return failure.code === "PLAN_WRITE_CONFLICT"
-          && failure.details?.queuePath === queuePath
+          && failure.details?.reason === "busy"
+          && failure.details?.targetPath === queuePath
           && failure.details?.timeoutMs === SESSION_OPEN_QUEUE_TIMEOUT_MS;
       },
     );
@@ -737,6 +734,7 @@ test("open exceeding the queue wait reports the queue owner failure below the ad
     assert.equal(fs.existsSync(path.join(registry.sessionDirectory(hash), "session.json")), false,
       "a failed queue acquisition must not write a session record");
   } finally {
-    fs.rmSync(queuePath, { force: true });
+    release();
+    await held;
   }
 });

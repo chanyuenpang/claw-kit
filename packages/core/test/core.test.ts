@@ -69,6 +69,7 @@ import {
   type PlanDocument,
 } from "../src/index.js";
 import { readTextFile, withSerializedAccess } from "../src/io.js";
+import { mutexWorker } from "./mutex-fixture.js";
 import {
   buildProjectKeywordSearchPlan,
   buildProjectQueryIntent,
@@ -344,7 +345,10 @@ test("knowledge sidecar derives adjacent report names and keeps one report owner
     ...readKnowledgeFinalizationJob(firstStop.jobPath!),
     host: "cindy",
   });
-  assert.deepEqual(reconcileKnowledgeFinalizationJobs(project), { checked: 1, failed: 0 });
+  const legacyNativeJob = fs.readFileSync(firstStop.jobPath!, "utf8");
+  assert.deepEqual(reconcileKnowledgeFinalizationJobs(project), { checked: 0, failed: 0 });
+  assert.equal(fs.readFileSync(firstStop.jobPath!, "utf8"), legacyNativeJob,
+    "automatic maintenance must not resume or rewrite old native-host jobs");
 
   const secondStop = tryCaptureKnowledgeStop({
     project,
@@ -382,117 +386,42 @@ test("knowledge sidecar failures stay fail-open for plan lifecycle callers", () 
   assert.match(result.error ?? "", /must stay inside/);
 });
 
-for (const host of ["codex", "cindy", "dsh"] as const) test(`${host} plan end creates child and root jobs while Stop stays out of the lifecycle`, () => {
-  const root = createEmptyFixture("knowledge-subagent-ready-job");
-  initProject({ cwd: root, projectName: "Knowledge Subagent Ready Job", externalDocPaths: ["docs"] });
-  const project = resolveProjectContext(root);
-  const taskDir = path.join(project.tasksDir, "demo");
-  const planPath = path.join(taskDir, "plan.json");
-  const subplanPath = path.join(taskDir, "design.json");
-  fs.mkdirSync(taskDir, { recursive: true });
-  fs.writeFileSync(planPath, "{}", "utf-8");
-  fs.writeFileSync(subplanPath, "{}", "utf-8");
-  const writer = { externalSkills: [] };
-
-  assert.equal(tryRegisterKnowledgePlan({
-    project,
-    host,
-    sessionId: "thread-subagent-ready",
-    planPath,
-    writer,
-  }).ok, true);
-  const rootRegistry = JSON.parse(
-    fs.readFileSync(knowledgeSessionRegistryPath(project, "thread-subagent-ready"), "utf-8"),
-  ) as Record<string, unknown>;
-  assert.equal(tryRegisterKnowledgePlan({
-    project,
-    host,
-    sessionId: "thread-subagent-ready",
-    planPath: subplanPath,
-    writer,
-  }).ok, true);
-  const subplanRegistry = JSON.parse(
-    fs.readFileSync(knowledgeSessionRegistryPath(project, "thread-subagent-ready"), "utf-8"),
-  ) as Record<string, unknown>;
-  assert.equal(subplanRegistry.activeStartedAt, rootRegistry.activeStartedAt);
-  const subplanEnded = tryEndKnowledgePlan({
-    project,
-    host,
-    sessionId: "thread-subagent-ready",
-    endedPlanPath: subplanPath,
-    resumedPlanPath: planPath,
-    endedAt: "2026-08-01T00:00:00.000Z",
-    writer,
-  });
-  assert.equal(subplanEnded.ok, true);
-  assert.ok(subplanEnded.finalizeId);
-  assert.ok(subplanEnded.jobPath);
-  const childJob = readKnowledgeFinalizationJob(subplanEnded.jobPath!);
-  assert.equal(childJob.planPath, subplanPath);
-  assert.equal(childJob.host, host);
-  assert.equal(childJob.status, "queued");
-  assert.equal(childJob.reportCapture?.status, "pending");
-  const repeated = tryEndKnowledgePlan({
-    project, host, sessionId: "thread-subagent-ready", endedPlanPath: subplanPath,
-    resumedPlanPath: planPath, endedAt: "2026-08-01T00:00:00.000Z", writer,
-  });
-  assert.deepEqual(repeated, subplanEnded);
-  assert.deepEqual(readKnowledgeFinalizationJob(repeated.jobPath!), childJob);
-  const resumedRegistry = JSON.parse(
-    fs.readFileSync(knowledgeSessionRegistryPath(project, "thread-subagent-ready"), "utf-8"),
-  ) as Record<string, unknown>;
-  assert.equal(resumedRegistry.activePlanPath, "tasks/demo/plan.json");
-  assert.equal(resumedRegistry.activeStartedAt, rootRegistry.activeStartedAt);
-  assert.equal("executionPolicy" in (resumedRegistry.activeWriter as Record<string, unknown>), false);
-  assert.equal(resumedRegistry.pendingTurnOwner, undefined);
-  const ended = tryEndKnowledgePlan({
-    project,
-    host,
-    sessionId: "thread-subagent-ready",
-    endedPlanPath: planPath,
-    endedAt: "2026-08-01T00:00:00.000Z",
-    writer,
-  });
-
-  assert.equal(ended.ok, true);
-  assert.ok(ended.finalizeId);
-  assert.ok(ended.jobPath);
-  const queued = readKnowledgeFinalizationJob(ended.jobPath!);
-  assert.equal(queued.status, "queued");
-  assert.equal(queued.attempts, 0);
-  assert.equal(queued.host, host);
-  assert.deepEqual(queued.docUpdate, { externalDocPaths: ["docs"] });
-  assert.equal(queued.reportCapture?.status, "pending");
-  const registry = JSON.parse(
-    fs.readFileSync(knowledgeSessionRegistryPath(project, "thread-subagent-ready"), "utf-8"),
-  ) as Record<string, unknown>;
-  assert.equal(registry.pendingTurnOwner, undefined);
-  assert.equal(registry.activePlanPath, undefined);
-
-  const stop = tryCaptureKnowledgeStop({
-    project,
-    host,
-    sessionId: "thread-subagent-ready",
-    turnId: "turn-final",
-    message: "This final answer must not be captured by Stop.",
-  });
-  assert.equal(stop.captured, false);
-  assert.equal(fs.existsSync(queued.reportPath), false);
-
-  assert.throws(() => claimKnowledgeFinalizationJob(ended.jobPath!, {
-    prepare: () => {
-      throw new Error("parent transcript unavailable");
-    },
-  }), host === "dsh" ? /trusted DSH child identity/ : /parent transcript unavailable/);
-  const retryable = readKnowledgeFinalizationJob(ended.jobPath!);
-  assert.equal(retryable.status, "queued");
-  assert.equal(retryable.attempts, 0);
-  assert.deepEqual(tryEndKnowledgePlan({
-    project, host, sessionId: "exempt", endedPlanPath: subplanPath,
-    endedAt: "2026-08-02T00:00:00.000Z", knowledgeCapture: false, writer,
-  }), { ok: true }, "explicit opt-out creates no finalizer");
-  assert.equal(fs.existsSync(knowledgeSessionRegistryPath(project, "exempt")), false);
-});
+// Source hosts hand off ordinary plans; the legacy helper only returns a dedup key.
+for (const host of ["codex", "cindy", "dsh"] as const) test(
+  host + " source end identifies child and root without creating claim jobs",
+  () => {
+    const root = createEmptyFixture("knowledge-source-end");
+    initProject({ cwd: root, projectName: "Knowledge Source End" });
+    const project = resolveProjectContext(root);
+    const taskDir = path.join(project.tasksDir, "demo");
+    fs.mkdirSync(taskDir, { recursive: true });
+    const planPath = path.join(taskDir, "plan.json");
+    const childPath = path.join(taskDir, "design.json");
+    const sessionId = "source-parent";
+    for (const sourcePath of [planPath, childPath]) {
+      fs.writeFileSync(sourcePath, "{}");
+      assert.deepEqual(tryRegisterKnowledgePlan({ project, host, sessionId, planPath: sourcePath }), { ok: true });
+    }
+    const end = (sourcePath: string) => tryEndKnowledgePlan({ project, host, sessionId,
+      endedPlanPath: sourcePath, endedAt: "2026-08-01T00:00:00.000Z" });
+    const child = end(childPath), parent = end(planPath);
+    assert.match(child.finalizeId ?? "", /^[a-f0-9]{64}$/);
+    assert.notEqual(child.finalizeId, parent.finalizeId);
+    assert.deepEqual(end(childPath), child, "dedup identity is deterministic, not a new job");
+    assert.equal(child.jobPath, undefined);
+    assert.equal(parent.jobPath, undefined);
+    assert.equal(fs.existsSync(knowledgeSessionRegistryPath(project, sessionId)), false);
+    assert.deepEqual(reconcileKnowledgeFinalizationJobs(project), { checked: 0, failed: 0 });
+    assert.equal(tryCaptureKnowledgeStop({ project, host, sessionId, turnId: "final",
+      message: "No Stop-owned capture" }).captured, false);
+    assert.deepEqual(tryEndKnowledgePlan({ project, host, sessionId, endedPlanPath: planPath,
+      endedAt: "2026-08-01T00:00:00.000Z", knowledgeCapture: false }), { ok: true });
+    for (const sourcePath of [planPath, childPath]) {
+      assert.equal(fs.existsSync(deriveKnowledgeReportPath(sourcePath)), false);
+    }
+    assert.equal(fs.existsSync(path.join(taskDir, ".runtime", "knowledge-finalization")), false);
+  },
+);
 
 test("expired knowledge jobs revoke their claim and never become retryable", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "claw-knowledge-expiry-"));
@@ -524,7 +453,7 @@ test("expired knowledge jobs revoke their claim and never become retryable", () 
   }), /does not match the active claim/);
 });
 
-test("leaving a plan revokes its queued knowledge job and removes its assignment claim", () => {
+test("explicit legacy leave revokes its existing knowledge job and removes its assignment claim", () => {
   const root = createEmptyFixture("knowledge-leave-cancellation");
   initProject({ cwd: root, projectName: "Knowledge Leave Cancellation" });
   const project = resolveProjectContext(root);
@@ -532,15 +461,17 @@ test("leaving a plan revokes its queued knowledge job and removes its assignment
   const planPath = path.join(taskDir, "plan.json");
   fs.mkdirSync(taskDir, { recursive: true });
   fs.writeFileSync(planPath, "{}", "utf-8");
-  const ended = tryEndKnowledgePlan({
-    project,
-    sessionId: "leave-session",
-    endedPlanPath: planPath,
-    endedAt: "2026-08-28T00:00:00.000Z",
-    writer: {  },
-    host: "codex",
+  // Explicitly construct an existing compatibility job. New Codex plan ends
+  // intentionally do not create one (source-plan-knowledge-handoff ADR).
+  const finalizeId = "b".repeat(64);
+  const jobPath = knowledgeFinalizationJobPath(project, "leave-task", finalizeId);
+  writeKnowledgeFinalizationJob(jobPath, {
+    schemaVersion: 1, finalizeId, host: "codex", sessionId: "leave-session",
+    projectRoot: root, taskName: "leave-task", planPath,
+    reportPath: deriveKnowledgeReportPath(planPath), reportCapture: { mode: "claim", status: "pending" },
+    status: "queued", attempts: 0, queuedAt: new Date().toISOString(),
   });
-  assert.ok(ended.jobPath);
+  const ended = { jobPath };
   const queued = claimKnowledgeFinalizationJob(ended.jobPath!);
   assert.ok(queued?.claimToken);
   const assignmentPath = path.join(path.dirname(ended.jobPath!), `${queued!.finalizeId}.assignments.json`);
@@ -553,51 +484,29 @@ test("leaving a plan revokes its queued knowledge job and removes its assignment
   assert.equal(fs.existsSync(assignmentPath), false);
 });
 
-for (const host of ["cindy", "dsh"] as const) {
-  test(`${host} uses the fixed native finalizer lifecycle`, () => {
-    const root = createEmptyFixture(`knowledge-${host}-subagent-only`);
-    initProject({ cwd: root, projectName: `Knowledge ${host} Subagent Only` });
+for (const host of ["codex", "cindy", "dsh"] as const) {
+  test(host + " automatic recovery leaves legacy finalizer history untouched", () => {
+    const root = createEmptyFixture("knowledge-legacy-history");
+    initProject({ cwd: root, projectName: "Legacy history" });
     const project = resolveProjectContext(root);
     const taskDir = path.join(project.tasksDir, "demo");
     const planPath = path.join(taskDir, "plan.json");
+    const sessionId = "historical-parent", finalizeId = "c".repeat(64);
     fs.mkdirSync(taskDir, { recursive: true });
-    fs.writeFileSync(planPath, "{}", "utf-8");
-    const writer = { externalSkills: [] };
-    const sessionId = `${host}-subagent-only`;
-
-    assert.equal(tryRegisterKnowledgePlan({
-      project,
-      sessionId,
-      planPath,
-      writer,
-      host,
-    }).ok, true);
-    const activeRegistry = JSON.parse(
-      fs.readFileSync(knowledgeSessionRegistryPath(project, sessionId), "utf-8"),
-    ) as { activeWriter?: { executionPolicy?: string } };
-    assert.equal("executionPolicy" in (activeRegistry.activeWriter ?? {}), false);
-
-    const ended = tryEndKnowledgePlan({
-      project,
-      sessionId,
-      endedPlanPath: planPath,
-      endedAt: "2026-08-01T00:00:00.000Z",
-      writer,
-      host,
+    const jobPath = knowledgeFinalizationJobPath(project, "demo", finalizeId);
+    writeKnowledgeFinalizationJob(jobPath, {
+      schemaVersion: 1, finalizeId, host, sessionId, projectRoot: root, taskName: "demo",
+      planPath, reportPath: deriveKnowledgeReportPath(planPath), status: "queued", attempts: 0,
+      queuedAt: "2020-01-01T00:00:00.000Z", expiresAt: "2020-01-01T00:00:01.000Z",
     });
-    assert.ok(ended.jobPath);
-    const queued = readKnowledgeFinalizationJob(ended.jobPath!);
-    assert.equal("executionPolicy" in (queued.writer ?? {}), false);
-    assert.equal(queued.docUpdate, undefined);
-    assert.equal(queued.reportCapture?.mode, "claim");
-    assert.equal(queued.status, "queued");
-    assert.equal(tryCaptureKnowledgeStop({
-      project,
-      sessionId,
-      turnId: "turn-after-end",
-      message: "Stop must not own native subagent knowledge capture.",
-      host,
-    }).captured, false);
+    const before = fs.readFileSync(jobPath, "utf8");
+    assert.deepEqual(tryRegisterKnowledgePlan({ project, sessionId, planPath, host }), { ok: true });
+    assert.equal(fs.existsSync(knowledgeSessionRegistryPath(project, sessionId)), false);
+    assert.equal(tryCaptureKnowledgeStop({ project, sessionId, host, turnId: "new-turn",
+      message: "Do not capture or revive historical work" }).captured, false);
+    assert.deepEqual(reconcileKnowledgeFinalizationJobs(project), { checked: 0, failed: 0 });
+    assert.equal(fs.readFileSync(jobPath, "utf8"), before, "even expired jobs remain diagnostic history");
+    assert.equal(fs.existsSync(deriveKnowledgeReportPath(planPath)), false);
   });
 }
 
@@ -1083,11 +992,10 @@ test("daily maintenance retries a transient dated-task rename lock", async (t) =
   const renameSync = fs.renameSync;
   let attempts = 0;
   t.mock.method(fs, "renameSync", ((source: fs.PathLike, target: fs.PathLike) => {
-    if (path.resolve(String(source)) === path.resolve(oldTaskDir) && attempts < 2) {
+    if (path.resolve(String(source)) === path.resolve(oldTaskDir)) {
       attempts += 1;
-      throw Object.assign(new Error("locked"), { code: "EPERM" });
+      if (attempts <= 2) throw Object.assign(new Error("locked"), { code: "EPERM" });
     }
-    attempts += 1;
     return renameSync(source, target);
   }) as typeof fs.renameSync);
 
@@ -2516,7 +2424,7 @@ test("writePlan rejects an invalid project template export shape", async () => {
   initProject({ cwd: root, projectName: "Invalid Project Template", planning: true, force: true });
   fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
   fs.writeFileSync(
-    path.join(root, ".claw", "templates", "broken-template.js"),
+    path.join(root, ".claw", "templates", "broken-template.cjs"),
     "module.exports = { nope: true };\n",
     "utf-8",
   );
@@ -6862,7 +6770,7 @@ test("enforceTaskRetention uses only completedAt age for active task archive eli
   assert.notEqual(findTaskDirectory(project, "missing-completed-at"), null);
 });
 
-test("concurrent plan creates fail fast with PLAN_WRITE_CONFLICT", async () => {
+test("concurrent plan creates fail fast with PLAN_WRITE_CONFLICT", async (t) => {
   const root = createFixture("plan-write-conflict");
   await writePlan({
     cwd: root,
@@ -6879,7 +6787,7 @@ test("concurrent plan creates fail fast with PLAN_WRITE_CONFLICT", async () => {
 
   const taskDir = path.dirname(taskFile(root, "demo-task", "plan.json"));
   const planPath = path.join(taskDir, "plan.json");
-  fs.writeFileSync(`${planPath}.lock`, "", "utf-8");
+  const holder = await mutexWorker(t, "file", planPath);
 
   await assert.rejects(
     editPlan({
@@ -6899,7 +6807,7 @@ test("concurrent plan creates fail fast with PLAN_WRITE_CONFLICT", async () => {
     },
   );
 
-  fs.unlinkSync(`${planPath}.lock`);
+  await holder.stop();
 });
 
 test("concurrent plan edits serialize and apply against the latest plan state", async () => {
@@ -6951,61 +6859,21 @@ test("concurrent plan edits serialize and apply against the latest plan state", 
   );
 });
 
-test("serialized access waits for queue lock contention instead of failing fast", async () => {
+test("serialized access waits for queue lock contention instead of failing fast", async (t) => {
   const root = createFixture("serialized-access-queue-lock-contention");
   const targetPath = path.join(root, ".claw", "tasks", "demo-task", "plan.json");
-  const queuePath = `${targetPath}.queue.json`;
-
-  fs.mkdirSync(path.dirname(queuePath), { recursive: true });
-  fs.writeFileSync(queuePath, JSON.stringify({
-    schemaVersion: 1,
-    token: "live-owner",
-    pid: process.pid,
-    acquiredAt: new Date().toISOString(),
-  }), "utf-8");
-
-  const releaseTimer = setTimeout(() => {
-    if (fs.existsSync(queuePath)) {
-      fs.unlinkSync(queuePath);
-    }
-  }, 50);
-
-  try {
-    const result = await withSerializedAccess(
-      targetPath,
-      async () => "ok",
-      { pollMs: 10, timeoutMs: 500 },
-    );
-
-    assert.equal(result, "ok");
-  } finally {
-    clearTimeout(releaseTimer);
-    if (fs.existsSync(queuePath)) {
-      fs.unlinkSync(queuePath);
-    }
-  }
+  const holder = await mutexWorker(t, "queue", `${targetPath}.queue.json`);
+  const pending = withSerializedAccess(targetPath, async () => "ok", { pollMs: 10, timeoutMs: 2000 });
+  await holder.release();
+  assert.equal(await pending, "ok");
 });
 
-test("serialized access reclaims a queue owned by a dead process", async () => {
+test("serialized access recovers after a real queue holder is killed", async (t) => {
   const root = createFixture("serialized-access-dead-owner");
   const targetPath = path.join(root, ".claw", "tasks", "demo-task", "plan.json");
-  const queuePath = `${targetPath}.queue.json`;
-  fs.mkdirSync(path.dirname(queuePath), { recursive: true });
-  fs.writeFileSync(queuePath, JSON.stringify({
-    schemaVersion: 1,
-    token: "dead-owner",
-    pid: 2_147_483_647,
-    acquiredAt: "2020-01-01T00:00:00.000Z",
-  }), "utf-8");
-
-  const result = await withSerializedAccess(
-    targetPath,
-    async () => "recovered",
-    { pollMs: 10, timeoutMs: 500 },
-  );
-
-  assert.equal(result, "recovered");
-  assert.equal(fs.existsSync(queuePath), false);
+  const holder = await mutexWorker(t, "queue", `${targetPath}.queue.json`);
+  await holder.stop();
+  assert.equal(await withSerializedAccess(targetPath, async () => "recovered"), "recovered");
 });
 
 test("plan edit can update explicit task fields and status atomically", async () => {

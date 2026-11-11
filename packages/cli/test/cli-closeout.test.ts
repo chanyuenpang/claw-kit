@@ -43,8 +43,25 @@ import {
   createNpmShim,
   createClawUpdateNpmShim,
 } from "./cli-test-support.js";
-import { resolveProjectContext } from "@veewo/claw-core";
+import { resolveProjectContext, writeKnowledgeFinalizationJob } from "@veewo/claw-core";
 import { createHash } from "node:crypto";
+
+// Compatibility claims are tested with an explicit historical job. New source
+// handoffs deliberately do not manufacture one just to reach the claim API.
+function seedLegacyJob(done: JsonRecord, host: "codex" | "cindy", sessionId: string): string {
+  const planPath = String(done.planPath);
+  const plan = JSON.parse(fs.readFileSync(planPath, "utf8"));
+  const finalizeId = createHash("sha256").update(host + sessionId + planPath).digest("hex");
+  const jobPath = path.join(path.dirname(planPath), ".runtime", "knowledge-finalization", finalizeId + ".json");
+  writeKnowledgeFinalizationJob(jobPath, { schemaVersion: 1, finalizeId, host, sessionId,
+    projectRoot: resolveProjectContext(path.dirname(planPath)).projectRoot,
+    taskName: path.basename(path.dirname(planPath)), planPath,
+    reportPath: path.join(path.dirname(planPath), "plan.report"), status: "queued", attempts: 0,
+    queuedAt: new Date().toISOString(), writer: { externalSkills: [] },
+    reportCapture: { mode: "claim", status: "pending", startedAt: plan.createdAt, endedAt: plan.completedAt },
+  });
+  return finalizeId;
+}
 
 
 test("cli leaves completed-task deposition to automatic turn reporting", () => {
@@ -197,29 +214,18 @@ test("cli plan done uses fixed native dispatch and standard/OpenCode closeout", 
   const done = runClaw(["plan", "done", "--retrospective", "Ready for knowledge finalization."], root, codexEnv);
   const dispatch = done.knowledgeDispatch as JsonRecord;
   assert.equal("policy" in (dispatch ?? {}), false);
-  assert.deepEqual(Object.keys(dispatch).sort(), [
-    "finalizeId",
-    "host",
-    "kind",
-    "leadInstruction",
-    "preferReuse",
-    "projectRoot",
-    "prompt",
-    "reasoningEffort",
-    "schemaVersion",
-    "writer",
-  ]);
-  assert.match(String(dispatch.finalizeId), /^[a-f0-9]{64}$/);
+  assert.equal(dispatch.schemaVersion, 2);
+  assert.match(String(dispatch.dispatchId), /^[a-f0-9]{64}$/);
+  assert.equal(dispatch.finalizeId, undefined);
+  assert.equal(dispatch.sourceSessionKey, codexEnv.CODEX_THREAD_ID);
+  assert.equal(dispatch.sourcePlan, done.planPath);
   assert.equal(dispatch.reasoningEffort, "medium");
-  assert.match(String(dispatch.prompt), /claw knowledge-finalization job/i);
-  assert.match(String(dispatch.prompt), /knowledge.*claim/i);
-  assert.doesNotMatch(String(dispatch.prompt), /plan\.create/);
+  assert.match(String(dispatch.prompt), /knowledge.*materials/i);
+  assert.match(String(dispatch.prompt), /ordinary auxiliary plan/i);
+  assert.doesNotMatch(String(dispatch.prompt), /knowledge.*claim|claimToken/);
   assert.equal(dispatch.projectRoot, path.resolve(root));
-  assert.ok(String(dispatch.prompt).includes("Project root: " + JSON.stringify(path.resolve(root))));
-  assert.match(String(dispatch.prompt), /If your current working directory differs/);
-  assert.match(String(dispatch.leadInstruction), /Required, non-skippable closeout/);
-  assert.match(String(dispatch.leadInstruction), /Do not skip it for any reason/);
-  assert.equal((done.nextsteps as string[]).some((step) => step.includes("non-skippable closeout")), false);
+  assert.match(String(dispatch.leadInstruction), /Start one knowledge writer/);
+  assert.match(String(dispatch.leadInstruction), /without waiting/);
 
   const cindyRoot = createFixture("plan-done-subagent-cindy");
   const cindyEnv = {
@@ -236,13 +242,13 @@ test("cli plan done uses fixed native dispatch and standard/OpenCode closeout", 
   );
   const cindyDispatch = cindyDone.knowledgeDispatch as JsonRecord;
   assert.equal("policy" in (cindyDispatch ?? {}), false);
-  assert.match(String(cindyDispatch.prompt), /claw-kit Cindy Ghost tools/);
-  assert.match(String(cindyDispatch.prompt), /knowledge\.claim/);
-  assert.match(String(cindyDispatch.prompt), /non-capturing auxiliary plan/i);
-  assert.match(String(cindyDispatch.prompt), /assignment subplan/i);
+  assert.match(String(cindyDispatch.prompt), /Cindy Ghost knowledge.materials/);
+  assert.match(String(cindyDispatch.prompt), /knowledge\.materials/);
+  assert.match(String(cindyDispatch.prompt), /auxiliary plan with knowledge_capture=false/i);
+  assert.match(String(cindyDispatch.prompt), /governance subplan/i);
   assert.doesNotMatch(String(cindyDispatch.prompt), /did-turn-end|Stop hook|knowledge wait/i);
-  assert.match(String(cindyDispatch.leadInstruction), /Required, non-skippable closeout/);
-  assert.match(String(cindyDispatch.leadInstruction), /Do not skip it for any reason/);
+  assert.match(String(cindyDispatch.leadInstruction), /Start one knowledge writer/);
+  assert.match(String(cindyDispatch.leadInstruction), /without waiting/);
   assert.equal((cindyDone.nextsteps as string[]).some((step) => step.includes("non-skippable closeout")), false);
 
   const dshRoot = createFixture("plan-done-subagent-dsh");
@@ -252,17 +258,14 @@ test("cli plan done uses fixed native dispatch and standard/OpenCode closeout", 
   const dshDone = runClaw(["plan", "done", "--retrospective", "Ready for native knowledge finalization."], dshRoot, dshEnv);
   const dshDispatch = dshDone.knowledgeDispatch as JsonRecord;
   assert.equal("policy" in (dshDispatch ?? {}), false);
-  assert.match(String(dshDispatch.prompt), /knowledge\.claim/);
+  assert.match(String(dshDispatch.prompt), /knowledge\.materials/);
   assert.doesNotMatch(String(dshDispatch.prompt), /plan\.create/);
-  assert.match(String(dshDispatch.prompt), /claw_run.*knowledge\.claim/);
-  assert.equal(dshDispatch.preferReuse, true);
-  assert.ok(String(dshDispatch.prompt).includes(String(dshDispatch.finalizeId)));
-  const dshTemplate = JSON.parse(fs.readFileSync(new URL("../../core/dist/src/resources/dsh-delegate-writer/TEMPLATE.json", import.meta.url), "utf8"));
-  assert.equal(dshTemplate.scope, undefined);
-  assert.equal(dshTemplate.knowledgeCapture, false);
-  for (const operation of ["knowledge.claim", "subplan.create", "knowledge.done"]) {
-    assert.ok(dshTemplate.tasks.some((task: { detail: string }) => task.detail.includes(operation)));
-  }
+  assert.match(String(dshDispatch.prompt), /claw_run knowledge.materials/);
+  assert.equal(dshDispatch.schemaVersion, 2);
+  assert.equal(dshDispatch.preferReuse, false);
+  assert.equal(dshDispatch.sourceSessionKey, dshEnv.CLAW_SESSION_ID);
+  assert.equal(dshDispatch.sourcePlan, dshDone.planPath);
+  assert.doesNotMatch(String(dshDispatch.prompt), /knowledge[ .](claim|done)|claimToken/);
   assert.doesNotMatch(String(dshDispatch.prompt), /claw plan create --template-file/);
 
 
@@ -279,7 +282,7 @@ test("cli plan done uses fixed native dispatch and standard/OpenCode closeout", 
 
 });
 
-test("Codex claim captures its parent report without Stop", () => {
+test("explicit legacy Codex claim captures its parent report without Stop", () => {
   const root = createFixture("subagent-claim-report-capture");
   const codexHome = createTemporaryDirectory("subagent-claim-codex-home");
   const sessionId = "019fbbe1-subagent-claim-report";
@@ -302,7 +305,7 @@ test("Codex claim captures its parent report without Stop", () => {
     env,
   );
   const dispatch = done.knowledgeDispatch as JsonRecord;
-  const finalizeId = String(dispatch.finalizeId);
+  const finalizeId = seedLegacyJob(done, "codex", sessionId);
   const jobPath = path.join(taskFinalizerJobsDirectory(root, "claim-report-task"), `${finalizeId}.json`);
   const reportPath = taskFile(root, "claim-report-task", "plan.report");
   assert.equal(fs.existsSync(jobPath), true);
@@ -459,7 +462,7 @@ test("Codex claim captures its parent report without Stop", () => {
   )), [path.basename(jobPath)]);
 });
 
-test("Cindy subagent claim uses its registered collector and atomically persists reports, including empty reports", () => {
+test("explicit legacy Cindy subagent claim uses its registered collector and atomically persists reports, including empty reports", () => {
   const root = createFixture("cindy-subagent-claim-report");
   const sessionId = "cindy-originating-session";
   const env = {
@@ -474,7 +477,7 @@ test("Cindy subagent claim uses its registered collector and atomically persists
   fs.writeFileSync(projectPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
   runClaw(["plan", "create", "--title", "cindy-claim-task", "--goal", "Capture Cindy report at claim"], root, env);
   const done = runClaw(["plan", "done", "--retrospective", "Ready."], root, env);
-  const finalizeId = String((done.knowledgeDispatch as JsonRecord).finalizeId);
+  const finalizeId = seedLegacyJob(done, "cindy", sessionId);
   const jobPath = path.join(taskFinalizerJobsDirectory(root, "cindy-claim-task"), `${finalizeId}.json`);
   const reportPath = taskFile(root, "cindy-claim-task", "plan.report");
 
@@ -529,7 +532,7 @@ fs.writeFileSync(request.stagingReportPath, events.length ? events.map((entry) =
 
   runClaw(["plan", "create", "--title", "cindy-empty-report-task", "--goal", "Materialize an empty Cindy report"], root, env);
   const emptyDone = runClaw(["plan", "done", "--retrospective", "Ready without conclusions."], root, env);
-  const emptyFinalizeId = String((emptyDone.knowledgeDispatch as JsonRecord).finalizeId);
+  const emptyFinalizeId = seedLegacyJob(emptyDone, "cindy", sessionId);
   const emptyJobPath = path.join(taskFinalizerJobsDirectory(root, "cindy-empty-report-task"), `${emptyFinalizeId}.json`);
   const emptyReportPath = taskFile(root, "cindy-empty-report-task", "plan.report");
   const emptyClaimed = runClaw([

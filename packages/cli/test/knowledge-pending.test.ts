@@ -1,11 +1,11 @@
 import test from "node:test";
-import { initProject, readKnowledgeFinalizationJob, listKnowledgeFinalizationJobs, resolveProjectContext } from "@veewo/claw-core";
+import { initProject, readKnowledgeFinalizationJob, writeKnowledgeFinalizationJob, listKnowledgeFinalizationJobs, resolveProjectContext } from "@veewo/claw-core";
 import { ClawCommandService } from "../dist/command-service.js";
 import { SessionRegistryV2, sessionFocusKey } from "../dist/session-registry-v2.js";
 import { pendingDshKnowledgeDispatches } from "../dist/knowledge-pending.js";
 import { assert, fs, path, createFixture, runClaw } from "./cli-test-support.js";
 
-test("trusted parent finds only its own queued DSH dispatch without replaying terminal mutation", async () => {
+test("explicit legacy inventory finds only its own queued DSH job without replaying a new source end", async () => {
   const root = createFixture("queued-dsh-dispatch");
   initProject({ cwd: root, projectName: "Queued Dispatch", planning: false });
   const configPath = path.join(root, ".claw", "project.json");
@@ -19,8 +19,17 @@ test("trusted parent finds only its own queued DSH dispatch without replaying te
   const service = new ClawCommandService(registry);
   await service.execute(context, { operation: "plan.create", input: { taskName: "recover-dispatch", title: "Recover dispatch" } });
   const terminal = await service.execute(context, { operation: "plan.done", input: { retrospectiveSummary: "Queued writer." } });
-  const id = (terminal.knowledgeDispatch as { finalizeId: string }).finalizeId;
-  const jobPath = listKnowledgeFinalizationJobs(resolveProjectContext(root))[0]!;
+  assert.equal(terminal.knowledgeDispatch?.schemaVersion, 2);
+  assert.deepEqual(listKnowledgeFinalizationJobs(resolveProjectContext(root)), []);
+  const id = "a".repeat(64);
+  const planPath = (terminal.output as { planPath: string }).planPath;
+  const jobPath = path.join(path.dirname(planPath), ".runtime", "knowledge-finalization", id + ".json");
+  writeKnowledgeFinalizationJob(jobPath, { schemaVersion: 1, finalizeId: id, host: "dsh", sessionId: "parent-session",
+    projectRoot: root, taskName: "recover-dispatch", planPath, reportPath: path.join(path.dirname(planPath), "plan.report"),
+    status: "queued", attempts: 0, queuedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 60000).toISOString(),
+    reportCapture: { mode: "claim", status: "pending", endedAt: new Date().toISOString() },
+  });
   const before = fs.readFileSync(jobPath, "utf8");
   assert.deepEqual(pendingDshKnowledgeDispatches(root, "other-parent"), []);
   const pending = pendingDshKnowledgeDispatches(root, "parent-session");

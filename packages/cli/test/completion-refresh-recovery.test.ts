@@ -2,7 +2,7 @@ import test, { before, after } from "node:test";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { initProject, writePlan, editPlan, showPlan, resolveProjectContext, listKnowledgeFinalizationJobs,
-  readKnowledgeFinalizationJob } from "@veewo/claw-core";
+  readKnowledgeFinalizationJob, writeKnowledgeFinalizationJob } from "@veewo/claw-core";
 import { openPersistentSession } from "../dist/session-command.js";
 import { registerReportCollector } from "../dist/report-collector-registry.js";
 import { reconcileCompletionRefresh } from "../dist/completion-refresh-recovery.js";
@@ -39,7 +39,7 @@ function project(name: string) {
   return root;
 }
 
-for (const embeddingEnabled of [false, true]) test(`persistent session finalization preserves external documents with embedding enabled=${embeddingEnabled}`, async () => {
+for (const embeddingEnabled of [false, true]) test(`explicit legacy completion preserves external documents with embedding enabled=${embeddingEnabled}`, async () => {
   const root = project("refresh space & args " + embeddingEnabled);
   const configPath = path.join(root, ".claw", "project.json");
   const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
@@ -56,13 +56,25 @@ for (const embeddingEnabled of [false, true]) test(`persistent session finalizat
   const runtimeRoot = createFixture("refresh-session-runtime");
   const session = await openPersistentSession({ runtimeRoot, workdir: root, agentSessionId: "refresh-agent", host: "cindy", clientKind: "adapter" });
   try {
-    await session.execute({ operation: "plan.create", input: { taskName: "refresh-plan", title: "Refresh plan" } });
-    await session.execute({ operation: "plan.done", input: { retrospectiveSummary: "Complete" } });
+    const created = await session.execute({ operation: "plan.create", input: { taskName: "refresh-plan", title: "Refresh plan" } });
+    const ended = await session.execute({ operation: "plan.done", input: { retrospectiveSummary: "Complete" } });
+    assert.equal((ended.knowledgeDispatch as { schemaVersion: number }).schemaVersion, 2);
     // Canonical response precedes maintenance; wait for the real recovery worker.
     await waitForCondition(() => receipts(root).length === 1, 30_000);
     await settled(receipts(root)[0]!);
     await idle(root);
-    const jobPath = listKnowledgeFinalizationJobs(resolveProjectContext(root))[0]!;
+    assert.deepEqual(listKnowledgeFinalizationJobs(resolveProjectContext(root)), []);
+    // Existing job APIs still support explicit recovery; source completion above
+    // must not be made to recreate the retired implicit job lifecycle.
+    const finalizeId = "d".repeat(64);
+    const planPath = (created.output as { planPath: string }).planPath;
+    const jobPath = path.join(path.dirname(planPath), ".runtime", "knowledge-finalization", finalizeId + ".json");
+    writeKnowledgeFinalizationJob(jobPath, { schemaVersion: 1, finalizeId, host: "cindy", sessionId: "refresh-agent",
+      projectRoot: root, taskName: "refresh-plan", planPath,
+      reportPath: path.join(path.dirname(planPath), "plan.report"), status: "queued", attempts: 0,
+      queuedAt: new Date().toISOString(), writer: { externalSkills: [] }, docUpdate: { externalDocPaths: ["docs"] },
+      reportCapture: { mode: "claim", status: "pending", endedAt: new Date().toISOString() },
+    });
     const job = readKnowledgeFinalizationJob(jobPath);
     assert.deepEqual(job.docUpdate, { externalDocPaths: ["docs"] });
     const claim = (await session.execute({ operation: "knowledge.claim", input: { finalizeId: job.finalizeId } })).output as { claimToken: string };

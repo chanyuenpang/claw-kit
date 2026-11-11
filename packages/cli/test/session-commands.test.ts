@@ -94,6 +94,10 @@ test("search and index refresh do not hold the session execution queue", async (
   const runtimeRoot = fixture("search-queue-runtime");
   const projectRoot = fixture("search-queue-project");
   initProject({ cwd: projectRoot, projectName: "Search Queue", planning: false, externalDocPaths: ["docs"] });
+  const configPath = path.join(projectRoot, ".claw", "project.json");
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  config.memory.embedding.enabled = true;
+  fs.writeFileSync(configPath, JSON.stringify(config));
   fs.mkdirSync(path.join(projectRoot, "docs"), { recursive: true });
   fs.writeFileSync(path.join(projectRoot, "docs", "allowed.md"), "session setup documentation", "utf-8");
   const registry = new SessionRegistryV2(runtimeRoot);

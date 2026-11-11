@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ClawError } from "./errors.js";
 import { listTaskDirectories } from "./context.js";
-import { readJsonFile, withFileLock, writeJsonFile } from "./io.js";
+import { readJsonFile, withFileLock, writeJsonFile, writeJsonFileAtomic } from "./io.js";
 import { ensureInsideDir, normalizePlanFile } from "./paths.js";
 import { bindSessionToPlan, resolveSessionBoundPlan, unbindSession } from "./session-bindings.js";
 import type { PlanDocument, ProjectContext, TaskMeta } from "./types.js";
@@ -28,6 +28,11 @@ export type TaskLayoutMigrationResult = {
 export function migrateLegacyTaskLayout(project: ProjectContext): TaskLayoutMigrationResult {
   const markerPath = taskLayoutMigrationMarkerPath(project.clawDir);
   const maintenancePath = taskLayoutMaintenancePath(project.clawDir);
+  // Completion is monotonic. Normal recovery has no migration work and must
+  // not depend on a maintenance writer (or its legacy occupancy file).
+  if (readTaskLayoutMaintenance(maintenancePath).migrations?.taskLayoutV2At && !fs.existsSync(markerPath)) {
+    return { changed: false, fixedPaths: [] };
+  }
   return withFileLock(maintenancePath, () => migrateLegacyTaskLayoutLocked(project, markerPath, maintenancePath));
 }
 
@@ -115,7 +120,7 @@ function readTaskLayoutMaintenance(maintenancePath: string): MaintenanceState {
 }
 
 function writeTaskLayoutMigrationCompletion(maintenancePath: string, maintenance: MaintenanceState): void {
-  writeJsonFile(maintenancePath, {
+  writeJsonFileAtomic(maintenancePath, {
     ...maintenance,
     migrations: {
       ...maintenance.migrations,

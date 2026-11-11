@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { doneKnowledgeFinalizationJob, readKnowledgeCompletionReceipt, type KnowledgeFinalizationJob } from "../src/knowledge-sidecar.js";
 
 function fixture(t: { after: (fn: () => void) => void }) {
@@ -79,7 +80,7 @@ test("terminal patch cannot replace claim token, actor, project or admission", t
 });
 
 test("atomic write uncertainty retains commit/unknown; post-commit cleanup failure keeps committed evidence", t => {
-  const f = fixture(t), rename = fs.renameSync, unlink = fs.unlinkSync;
+  const f = fixture(t), rename = fs.renameSync, close = DatabaseSync.prototype.close;
   t.mock.method(fs, "renameSync", ((source: fs.PathLike, target: fs.PathLike) => {
     if (String(target) === f.jobPath) throw new Error("fixture atomic write failure");
     return rename(source, target);
@@ -88,10 +89,10 @@ test("atomic write uncertainty retains commit/unknown; post-commit cleanup failu
     assert.deepEqual(e.execution, { operation: "knowledge.done", phase: "commit", outcome: "unknown", effect: "unknown" }); return true;
   });
   t.mock.restoreAll();
-  t.mock.method(fs, "unlinkSync", ((file: fs.PathLike) => {
-    if (String(file) === f.jobPath + ".lock") throw new Error("fixture lock release failure");
-    return unlink(file);
-  }) as typeof fs.unlinkSync);
+  t.mock.method(DatabaseSync.prototype, "close", function (this: DatabaseSync) {
+    close.call(this);
+    throw new Error("fixture lock release failure after actual close");
+  });
   assert.throws(() => doneKnowledgeFinalizationJob({ jobPath: f.jobPath, claimToken: f.token, status: "succeeded", result: "done" }), (e: any) => {
     assert.deepEqual(e.execution, { operation: "knowledge.done", phase: "post-commit", outcome: "known", effect: "committed" }); return true;
   });

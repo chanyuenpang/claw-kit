@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { readJsonFile, tryWithFileLock, writeJsonFile } from "./io.js";
+import { readJsonFile, tryWithFileLock, writeJsonFileAtomic } from "./io.js";
 import { pruneStaleSessionBindings } from "./session-bindings.js";
 import { pruneLegacyKnowledgeRuntime } from "./knowledge-sidecar.js";
 import { sessionWorkflowBaseDir, sweepExpiredSessionWorkflows } from "./session-workflows.js";
@@ -99,7 +99,7 @@ function runOncePerDay<T>(stampPath: string, date: string, action: () => T): { r
     const stamp = readStamp(stampPath);
     if (stamp?.lastRunDate === date) return { ran: false, skippedLocked: false };
     const value = action();
-    writeJsonFile(stampPath, { ...stamp, lastRunDate: date } satisfies MaintenanceStamp);
+    writeJsonFileAtomic(stampPath, { ...stamp, lastRunDate: date } satisfies MaintenanceStamp);
     return { ran: true, skippedLocked: false, value };
   });
   return result.acquired ? result.value : { ran: false, skippedLocked: true };
