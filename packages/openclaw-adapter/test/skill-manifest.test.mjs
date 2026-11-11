@@ -12,7 +12,11 @@ test("OpenClaw manifest declares its assembled documentation skill root", async 
   const artifactRoot = await fs.mkdtemp(path.join(os.tmpdir(), "claw-openclaw-skills-"));
   t.after(() => fs.rm(artifactRoot, { recursive: true, force: true }));
   await assembleSkills({ sourceRoot: path.resolve(packageRoot, "../.."), targetHost: "openclaw", outputRoot: artifactRoot });
-  assert.deepEqual(await fs.readdir(path.join(artifactRoot, "skills")), ["claw-kit-doc"]);
+  const inputs = JSON.parse(await fs.readFile(path.join(packageRoot, "skill-inputs.json"), "utf8"));
+  assert.deepEqual((await fs.readdir(path.join(artifactRoot, "skills"))).sort(), [...inputs.skills].sort());
+  for (const skill of inputs.skills) {
+    await assert.doesNotReject(fs.access(path.join(artifactRoot, "skills", skill, "SKILL.md")));
+  }
   const manifest = JSON.parse(await fs.readFile(path.join(packageRoot, "openclaw.plugin.json"), "utf8"));
   const packageJson = JSON.parse(await fs.readFile(path.join(packageRoot, "package.json"), "utf8"));
 

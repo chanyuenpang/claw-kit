@@ -2,622 +2,157 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { buildMemoryIndex, resolveProjectMemoryEmbeddingConfig, ClawError, DEFAULT_MAX_TASKS_TO_KEEP, enforceTaskRetention, findTaskDirectory, resolveProjectContext, writeJsonFileAtomic, type ProjectConfig } from "@veewo/claw-core";
+import { buildMemoryIndex, resolveProjectMemoryEmbeddingConfig, ClawError, DEFAULT_MAX_TASKS_TO_KEEP, enforceTaskRetention, resolveProjectContext, tryWithFileLock, writeJsonFileAtomic, serializeFailure, type ProjectConfig } from "@veewo/claw-core";
 import { withoutInvocationHost } from "./invocation-host.js";
 
-export type CompletionRefreshResult = {
-  taskRetention: ReturnType<typeof enforceTaskRetention>;
-  asyncRefresh: {
-    queued: true;
-    startedAt: string;
-    statusFile: string;
-    operations: CompletionRefreshOperation[];
-    coalesced?: boolean;
-    leaderStatusFile?: string;
-    dirtyHash: string;
-  };
-};
-
-type CompletionRefreshOperation = "task.retention" | "memory.reindex.project" | "gitnexus.refresh";
-
-type CompletionRefreshStatus = ({
-  ok: true;
-  queued: true;
-  startedAt: string;
-  cwd: string;
-  taskName: string;
-  operations: CompletionRefreshOperation[];
-} | {
-  ok: true;
-  coalesced: true;
-  queued: true;
-  startedAt: string;
-  cwd: string;
-  taskName: string;
-  operations: CompletionRefreshOperation[];
-  dirtyHash: string;
-  leaderStatusFile: string;
-} | {
-  ok: true;
-  running: true;
-  startedAt: string;
-  cwd: string;
-  taskName: string;
-  operations: CompletionRefreshOperation[];
-} | {
-  ok: true;
-  startedAt: string;
-  finishedAt: string;
-  cwd: string;
-  taskName: string;
-  memory?: {
-    project: ReturnType<typeof buildMemoryIndex>;
-  };
-  taskRetention?: ReturnType<typeof enforceTaskRetention>;
-  gitnexus?: GitNexusRefreshResult;
-  dirtyHash?: string;
-  refreshCycles?: number;
-  coalescedCount?: number;
-} | {
-  ok: false;
-  startedAt: string;
-  finishedAt: string;
-  cwd: string;
-  taskName: string;
-  error: {
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-}) & { operations?: CompletionRefreshOperation[] };
-
-type GitNexusRefreshResult = {
-  enabled: true;
-  command: string;
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-} | {
-  enabled: false;
-  reason: string;
-};
-
-type CompletionRefreshFlightState = {
-  schemaVersion: 1;
-  queuedAt: string;
-  leaderStatusFile: string;
-  statusFiles: string[];
-  requestedDirtyHash: string;
-  operations: CompletionRefreshOperation[];
-  pid?: number;
-  startedAt?: string;
-};
-
-export function queueCompletionRefresh(input: {
+export type CompletionRefreshInput = {
   cwd: string;
   taskName: string;
   includeTaskRetention?: boolean;
   includeGitNexus?: boolean;
   statusLabel?: string;
-  /** Stable durable status supplied by terminal-fact reconciliation. */
-  statusFile?: string;
-}): CompletionRefreshResult {
-  const project = resolveProjectContext(input.cwd);
-  const includeTaskRetention = input.includeTaskRetention ?? true;
-  // Retention is deliberately a background effect. A locked old task must not
-  // sit between the durable terminal mutation and its knowledge dispatch.
-  const taskRetention = {
-    enabled: includeTaskRetention,
-    maxTasksToKeep: project.projectConfig?.maxTasksToKeep ?? DEFAULT_MAX_TASKS_TO_KEEP,
-    archivedTasks: [],
-    prunedArchivedTasks: [],
-    failures: [],
+};
+type CompletionRefreshOperation = "task.retention" | "memory.reindex.project" | "gitnexus.refresh";
+export type CompletionRefreshResult = {
+  taskRetention: ReturnType<typeof enforceTaskRetention>;
+  asyncRefresh: {
+    queued: boolean;
+    startedAt: string;
+    statusFile: string;
+    operations: CompletionRefreshOperation[];
+    error?: ReturnType<typeof serializeFailure>;
   };
+};
+type GitNexusRefreshResult = {
+  enabled: true; command: string; exitCode: number; stdout: string; stderr: string;
+} | { enabled: false; reason: string };
+export type CompletionRefreshAttempt = CompletionRefreshInput & {
+  statusFile: string;
+  operations: CompletionRefreshOperation[];
+};
+
+/** One current opportunity, not a durable intent. Logs are never read as work. */
+export function queueCompletionRefresh(input: CompletionRefreshInput): CompletionRefreshResult {
   const startedAt = new Date().toISOString();
-  const logFile = createCompletionRefreshStatusFile(project.clawDir, input.statusLabel ?? input.taskName, startedAt);
-  const statusFile = input.statusFile ?? logFile;
-  const operations: CompletionRefreshResult["asyncRefresh"]["operations"] = resolveProjectMemoryEmbeddingConfig(project) ? ["memory.reindex.project"] : [];
-  if (includeTaskRetention) {
-    operations.unshift("task.retention");
-  }
-  if (project.projectConfig?.gitnexus === true && input.includeGitNexus !== false) {
-    operations.push("gitnexus.refresh");
-  }
-  const dirtyHash = computeCompletionDirtyHash(input.cwd, input.taskName, operations);
-
-  fs.mkdirSync(path.dirname(statusFile), { recursive: true });
-  writeCompletionStatusAtomic(statusFile, {
-    ok: true, queued: true, startedAt, cwd: input.cwd, taskName: input.taskName, operations, dirtyHash,
-  });
-  if (logFile !== statusFile) {
-    fs.mkdirSync(path.dirname(logFile), { recursive: true });
-    fs.copyFileSync(statusFile, logFile);
-  }
-  const flight = claimCompletionRefreshFlight({
-    mirrorStatusFile: logFile !== statusFile ? logFile : undefined,
-    clawDir: project.clawDir,
-    statusFile,
-    dirtyHash,
-    operations,
-    queuedAt: startedAt,
-  });
-  if (flight.leader) {
-    launchCompletionRefreshWorker({
-      cwd: input.cwd,
-      taskName: input.taskName,
-      statusFile,
-    });
-  }
-
-  return {
-    taskRetention,
-    asyncRefresh: {
-      queued: true,
-      startedAt,
-      statusFile,
-      operations,
-      dirtyHash,
-      ...(!flight.leader ? { coalesced: true, leaderStatusFile: flight.leaderStatusFile } : {}),
-    },
+  const taskRetention: CompletionRefreshResult["taskRetention"] = {
+    enabled: input.includeTaskRetention ?? true, maxTasksToKeep: DEFAULT_MAX_TASKS_TO_KEEP,
+    archivedTasks: [], prunedArchivedTasks: [], failures: [],
   };
+  const asyncRefresh: CompletionRefreshResult["asyncRefresh"] = {
+    queued: false, startedAt, statusFile: "", operations: [],
+  };
+  try {
+    const project = resolveProjectContext(input.cwd);
+    taskRetention.maxTasksToKeep = project.projectConfig?.maxTasksToKeep ?? DEFAULT_MAX_TASKS_TO_KEEP;
+    if (taskRetention.enabled) asyncRefresh.operations.push("task.retention");
+    if (resolveProjectMemoryEmbeddingConfig(project)) asyncRefresh.operations.push("memory.reindex.project");
+    if (project.projectConfig?.gitnexus === true && input.includeGitNexus !== false) asyncRefresh.operations.push("gitnexus.refresh");
+    const label = (input.statusLabel ?? input.taskName).replace(/[^a-zA-Z0-9._-]+/g, "-");
+    asyncRefresh.statusFile = path.join(project.clawDir, "logs", "completion-refresh",
+      startedAt.replace(/[:.]/g, "-") + "-" + label + "-" + randomUUID() + ".json");
+    const attempt = { ...input, cwd: project.projectRoot, statusFile: asyncRefresh.statusFile, operations: asyncRefresh.operations };
+    writeAttemptStatus(attempt, { ok: true, queued: true, startedAt });
+    launchCompletionRefreshWorker(attempt, startedAt);
+    asyncRefresh.queued = true;
+  } catch (error) {
+    asyncRefresh.error = refreshError(error);
+    process.stderr.write("Completion refresh skipped: " + JSON.stringify(asyncRefresh.error) + "\n");
+  }
+  return { taskRetention, asyncRefresh };
 }
 
-/** Resume only system work; never replay the plan/job command that requested it. */
-export function resumeCompletionRefresh(statusFile: string): CompletionRefreshResult | undefined {
-  const status = tryReadCompletionRefreshStatus(statusFile);
-  if (!status || (status.ok && "finishedAt" in status)) return;
-  const project = resolveProjectContext(status.cwd);
-  const flight = readCompletionRefreshFlightState(getCompletionRefreshFlightDir(project.clawDir));
-  if (flight && !isCompletionRefreshFlightStale(flight) && flight.statusFiles.includes(statusFile)) return;
-  return queueCompletionRefresh({
-    cwd: project.projectRoot, taskName: status.taskName, statusFile,
-    includeTaskRetention: status.operations?.includes("task.retention") ?? false,
-    includeGitNexus: status.operations?.includes("gitnexus.refresh") ?? false,
-  });
+function refreshError(error: unknown): ReturnType<typeof serializeFailure> {
+  return serializeFailure(error, { fallbackCode: "COMPLETION_REFRESH_FAILED", origin: "cli", operation: "completion.refresh" });
 }
 
-function resolveCliEntryPath(): string {
-  return fileURLToPath(new URL("./bin.js", import.meta.url));
+/** Diagnostic output is optional and cannot authorize or prevent maintenance. */
+function writeAttemptStatus(input: CompletionRefreshAttempt, status: Record<string, unknown>): void {
+  try {
+    writeJsonFileAtomic(input.statusFile, { cwd: input.cwd, taskName: input.taskName, operations: input.operations, ...status });
+  } catch (error) {
+    process.stderr.write("Completion refresh diagnostic unavailable: " + refreshError(error).message + "\n");
+  }
 }
 
 function quoteWindowsArgument(value: string): string {
   return '"' + value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/g, "$1$1") + '"';
 }
 
-function launchCompletionRefreshWorker(input: {
-  cwd: string;
-  taskName: string;
-  statusFile: string;
-}): void {
-  if (process.platform === "win32") {
-    const launcherScript = [
-      "$node = $env:CLAW_COMPLETION_NODE",
-      "$entry = $env:CLAW_COMPLETION_ENTRY",
-      "$cwd = $env:CLAW_COMPLETION_CWD",
-      "$task = $env:CLAW_COMPLETION_TASK",
-      "$status = $env:CLAW_COMPLETION_STATUS",
-      "Start-Process -FilePath $node -ArgumentList $env:CLAW_COMPLETION_ARGS -WorkingDirectory $cwd -WindowStyle Hidden -ErrorAction Stop",
-    ].join("; ");
-    const launcher = spawnSync(
-      "powershell.exe",
-      ["-NoProfile", "-Command", launcherScript],
-      {
-        cwd: input.cwd,
-        stdio: "ignore",
-        windowsHide: true,
-        env: {
-          ...withoutInvocationHost(),
-          CLAW_COMPLETION_ARGS: [resolveCliEntryPath(), "internal-completion-refresh", "--cwd", input.cwd, "--task", input.taskName, "--status-file", input.statusFile].map(quoteWindowsArgument).join(" "),
-          CLAW_COMPLETION_NODE: process.execPath,
-          CLAW_COMPLETION_ENTRY: resolveCliEntryPath(),
-          CLAW_COMPLETION_CWD: input.cwd,
-          CLAW_COMPLETION_TASK: input.taskName,
-          CLAW_COMPLETION_STATUS: input.statusFile,
-        },
-      },
-    );
-    if (launcher.error) {
-      throw new ClawError(
-        "PROJECT_CONFIG_INVALID",
-        "Unable to launch background completion refresh.",
-        {
-          cwd: input.cwd,
-          message: launcher.error.message,
-        },
-      );
-    }
-    if ((launcher.status ?? 0) !== 0) {
-      throw new ClawError(
-        "PROJECT_CONFIG_INVALID",
-        "Background completion refresh launcher exited unexpectedly.",
-        {
-          cwd: input.cwd,
-          exitCode: launcher.status ?? 0,
-        },
-      );
-    }
-    return;
-  }
-
-  const child = spawn(
-    process.execPath,
-    [
-      resolveCliEntryPath(),
-      "internal-completion-refresh",
-      "--cwd",
-      input.cwd,
-      "--task",
-      input.taskName,
-      "--status-file",
-      input.statusFile,
-    ],
-    {
-      cwd: input.cwd,
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true,
-      env: withoutInvocationHost(),
-    },
-  );
-  child.unref();
-}
-
-export function runCompletionRefresh(input: { cwd: string; taskName: string; statusFile: string }): void {
-  const { cwd, taskName, statusFile } = input;
-  const startedAt = new Date().toISOString();
-  const queuedStatus = JSON.parse(fs.readFileSync(statusFile, "utf-8")) as CompletionRefreshStatus;
-  const flightDir = getCompletionRefreshFlightDir(resolveProjectContext(cwd).clawDir);
-  const initialFlight = readCompletionRefreshFlightState(flightDir);
-  const operations: CompletionRefreshOperation[] = initialFlight?.operations ?? (
-    "operations" in queuedStatus && Array.isArray(queuedStatus.operations)
-      ? queuedStatus.operations as CompletionRefreshOperation[]
-      : ["memory.reindex.project"]);
-  // A delayed launcher or duplicate recovery must not become a second runner.
-  let accepted = false;
-  if (!initialFlight || initialFlight.leaderStatusFile !== statusFile) return;
-  updateCompletionRefreshFlightState(flightDir, (state) => {
-    if (state.leaderStatusFile !== statusFile || (state.pid && !isCompletionRefreshFlightStale(state))) return state;
-    accepted = true;
-    return { ...state, pid: process.pid, startedAt };
+function launchCompletionRefreshWorker(input: CompletionRefreshAttempt, startedAt: string): void {
+  const args = [fileURLToPath(new URL("./completion-refresh-entry.js", import.meta.url)),
+    Buffer.from(JSON.stringify(input)).toString("base64")];
+  const windows = process.platform === "win32";
+  const env = withoutInvocationHost();
+  // Windows needs an external launcher to preserve captured foreground stdout.
+  // Reference startup only, with a bound; never wait for maintenance itself.
+  const child = windows
+    ? spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+      "Start-Process -FilePath $env:CLAW_COMPLETION_NODE -ArgumentList $env:CLAW_COMPLETION_ARGS -WorkingDirectory $env:CLAW_COMPLETION_CWD -WindowStyle Hidden -ErrorAction Stop; [Console]::Out.WriteLine('CLAW_COMPLETION_STARTED')"],
+      { cwd: input.cwd, env: { ...env, CLAW_COMPLETION_NODE: process.execPath,
+        CLAW_COMPLETION_ARGS: args.map(quoteWindowsArgument).join(" "), CLAW_COMPLETION_CWD: input.cwd },
+        stdio: ["ignore", "pipe", "ignore"], windowsHide: true })
+    : spawn(process.execPath, args, { cwd: input.cwd, env, detached: true, stdio: "ignore" });
+  let startup: ReturnType<typeof setTimeout> | undefined;
+  let started = !windows;
+  const failed = (error: unknown) => {
+    clearTimeout(startup);
+    writeAttemptStatus(input, { ok: false, startedAt, finishedAt: new Date().toISOString(), error: refreshError(error) });
+  };
+  child.once("error", failed);
+  if (!windows) { child.unref(); return; }
+  startup = setTimeout(() => {
+    child.stdout?.destroy(); child.kill();
+    failed(new Error("Completion refresh launcher timed out; this attempt will not be retried."));
+  }, 5_000);
+  let output = "";
+  child.stdout?.on("data", chunk => {
+    output += String(chunk);
+    if (!output.includes("CLAW_COMPLETION_STARTED")) return;
+    started = true;
+    clearTimeout(startup);
+    child.stdout?.destroy(); child.unref();
   });
-  if (!accepted) return;
+  child.once("exit", () => {
+    clearTimeout(startup);
+    if (!started) failed(new Error("Completion refresh launcher exited before acknowledging startup."));
+  });
+}
 
+/** Run a fresh snapshot once. Busy work is skipped, not joined or retried. */
+export function runCompletionRefresh(input: CompletionRefreshAttempt): void {
+  const startedAt = new Date().toISOString();
+  const finish = (status: Record<string, unknown>) => writeAttemptStatus(input, {
+    startedAt, finishedAt: new Date().toISOString(), ...status,
+  });
   try {
-    writeCompletionStatusAtomic(statusFile, {
-      ok: true, running: true, startedAt, cwd, taskName, operations,
-    } satisfies CompletionRefreshStatus);
-    let projectMemory: ReturnType<typeof buildMemoryIndex> | undefined;
-    let gitnexus: GitNexusRefreshResult | undefined;
-    let taskRetention: ReturnType<typeof enforceTaskRetention> | undefined;
-    let refreshCycles = 0;
-    let dirtyHash = "";
-    let coveredStatusFiles: string[] = [];
-    let coveredRequestHash: string | undefined;
-    let stable = false;
-    while (refreshCycles < 3) {
-      refreshCycles += 1;
-      const cycleFlight = readCompletionRefreshFlightState(flightDir);
-      coveredStatusFiles = cycleFlight?.statusFiles ?? [statusFile];
-      coveredRequestHash = cycleFlight?.requestedDirtyHash;
-      for (const operation of cycleFlight?.operations ?? []) {
-        if (!operations.includes(operation)) operations.push(operation);
-      }
-      if (!taskRetention && operations.includes("task.retention")) taskRetention = enforceTaskRetention(resolveProjectContext(cwd), taskName);
-      dirtyHash = computeCompletionDirtyHash(cwd, taskName, operations);
-      if (operations.includes("memory.reindex.project")) {
-        // Core re-reads the effective switch, including for pre-existing queued work.
-        projectMemory = buildMemoryIndex({ cwd, scope: "project" });
-      }
-      gitnexus = operations.includes("gitnexus.refresh")
-        ? refreshGitNexusIfEnabled(cwd, resolveProjectContext(cwd).projectConfig)
-        : {
-            enabled: false,
-            reason: "gitnexus is not enabled in .claw/project.json",
-          };
-      const latestFlight = readCompletionRefreshFlightState(flightDir);
-      const latestDirtyHash = computeCompletionDirtyHash(cwd, taskName, latestFlight?.operations ?? operations);
-      if (latestDirtyHash === dirtyHash && latestFlight?.requestedDirtyHash === cycleFlight?.requestedDirtyHash) {
-        stable = true;
-        break;
-      }
-      if (latestFlight?.operations) {
-        for (const operation of latestFlight.operations) {
-          if (!operations.includes(operation)) {
-            operations.push(operation);
+    const project = resolveProjectContext(input.cwd);
+    // Mixed old/new refresh writers are unsafe. An old occupancy directory only
+    // skips this optional attempt; it never blocks a business command or gets deleted.
+    if (fs.existsSync(path.join(project.clawDir, "logs", "completion-refresh", "inflight.lock"))) {
+      finish({ ok: true, skipped: "legacy_refresh" }); return;
+    }
+    const lock = path.join(project.clawDir, "runtime", "completion-refresh", "worker");
+    const attempt = tryWithFileLock(lock, () => {
+      writeAttemptStatus(input, { ok: true, running: true, startedAt });
+      const result: Record<string, unknown> = { gitnexus: { enabled: false,
+        reason: project.projectConfig?.gitnexus ? "gitnexus refresh was not requested for this attempt" : "gitnexus is not enabled in .claw/project.json" } };
+      const failures: Array<{ operation: CompletionRefreshOperation; code: string; message: string }> = [];
+      for (const operation of input.operations) {
+        try {
+          switch (operation) {
+            case "task.retention": result.taskRetention = enforceTaskRetention(project, input.taskName); break;
+            case "memory.reindex.project": result.memory = { project: buildMemoryIndex({ cwd: input.cwd, scope: "project" }) }; break;
+            case "gitnexus.refresh": result.gitnexus = refreshGitNexusIfEnabled(input.cwd, resolveProjectContext(input.cwd).projectConfig); break;
           }
-        }
+        } catch (error) { failures.push({ ...refreshError(error), operation }); }
       }
-    }
-    if (!stable) throw new Error("Completion refresh inputs kept changing; pending work will resume on the next entry.");
-    const finalFlight = readCompletionRefreshFlightState(flightDir);
-    const status: CompletionRefreshStatus = {
-      ok: true,
-      startedAt,
-      finishedAt: new Date().toISOString(),
-      cwd,
-      taskName,
-      operations,
-      ...(projectMemory ? { memory: { project: projectMemory } } : {}),
-      ...(taskRetention ? { taskRetention } : {}),
-      gitnexus,
-      dirtyHash,
-      refreshCycles,
-      coalescedCount: Math.max(0, (finalFlight?.statusFiles.length ?? 1) - 1),
-    };
-    writeCompletionRefreshFinalStatuses(flightDir, statusFile, status, coveredStatusFiles, coveredRequestHash);
-  } catch (error) {
-    const payload: CompletionRefreshStatus = {
-      ok: false,
-      startedAt,
-      finishedAt: new Date().toISOString(),
-      cwd,
-      taskName,
-      operations,
-      error: error instanceof ClawError
-        ? {
-            code: error.code,
-            message: error.message,
-            ...(error.details ? { details: error.details } : {}),
-          }
-        : {
-            code: "COMPLETION_REFRESH_FAILED",
-            message: error instanceof Error ? error.message : "Unknown completion refresh failure.",
-          },
-    };
-    writeCompletionRefreshFinalStatuses(flightDir, statusFile, payload);
-    process.exitCode = 1;
-  }
-}
-
-function getCompletionRefreshFlightDir(clawDir: string): string {
-  return path.join(clawDir, "logs", "completion-refresh", "inflight.lock");
-}
-
-function claimCompletionRefreshFlight(input: {
-  mirrorStatusFile?: string;
-  clawDir: string;
-  statusFile: string;
-  dirtyHash: string;
-  operations: CompletionRefreshOperation[];
-  queuedAt: string;
-}, staleRetries = 0): { leader: boolean; leaderStatusFile: string } {
-  const flightDir = getCompletionRefreshFlightDir(input.clawDir);
-  try {
-    fs.mkdirSync(flightDir);
-    const state: CompletionRefreshFlightState = {
-      schemaVersion: 1,
-      queuedAt: input.queuedAt,
-      leaderStatusFile: input.statusFile,
-      statusFiles: [input.statusFile, ...(input.mirrorStatusFile ? [input.mirrorStatusFile] : [])],
-      requestedDirtyHash: input.dirtyHash,
-      operations: input.operations,
-    };
-    writeCompletionRefreshFlightState(flightDir, state);
-    return { leader: true, leaderStatusFile: input.statusFile };
-  } catch (error) {
-    if (!isFileAlreadyExistsError(error)) {
-      throw error;
-    }
-  }
-
-  const existing = readCompletionRefreshFlightState(flightDir);
-  if (!existing || isCompletionRefreshFlightStale(existing)) {
-    fs.rmSync(flightDir, { recursive: true, force: true });
-    if (staleRetries >= 1) {
-      // Windows can retain a stale directory briefly when its old lock file was
-      // opened by a dead worker. Reclaim the directory in place rather than
-      // recursively retrying until the JavaScript stack overflows.
-      fs.rmSync(path.join(flightDir, "state.write.lock"), { force: true });
-      const reclaimed: CompletionRefreshFlightState = {
-        schemaVersion: 1,
-        queuedAt: input.queuedAt,
-        leaderStatusFile: input.statusFile,
-        statusFiles: [input.statusFile, ...(input.mirrorStatusFile ? [input.mirrorStatusFile] : [])],
-        requestedDirtyHash: input.dirtyHash,
-        operations: input.operations,
-      };
-      writeCompletionRefreshFlightState(flightDir, reclaimed);
-      return { leader: true, leaderStatusFile: input.statusFile };
-    }
-    return claimCompletionRefreshFlight(input, staleRetries + 1);
-  }
-  const updated = updateCompletionRefreshFlightState(flightDir, (state) => ({
-    ...state,
-    statusFiles: Array.from(new Set([...state.statusFiles, input.statusFile, ...(input.mirrorStatusFile ? [input.mirrorStatusFile] : [])])),
-    requestedDirtyHash: input.dirtyHash,
-    operations: Array.from(new Set([...state.operations, ...input.operations])),
-  }));
-  return { leader: false, leaderStatusFile: updated.leaderStatusFile };
-}
-
-function readCompletionRefreshFlightState(flightDir: string): CompletionRefreshFlightState | null {
-  const statePath = path.join(flightDir, "state.json");
-  if (!fs.existsSync(statePath)) {
-    return null;
-  }
-  try {
-    return JSON.parse(fs.readFileSync(statePath, "utf-8")) as CompletionRefreshFlightState;
-  } catch {
-    return null;
-  }
-}
-
-/** Windows readers can briefly deny replacement of a durable status file. */
-function writeCompletionStatusAtomic(statusFile: string, status: unknown): void {
-  for (let attempt = 0; ; attempt += 1) {
-    try { writeJsonFileAtomic(statusFile, status); return; }
-    catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (process.platform !== "win32" || !["EPERM", "EACCES", "EBUSY"].includes(code ?? "") || attempt >= 19) throw error;
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10 + attempt * 2);
-    }
-  }
-}
-
-export function tryReadCompletionRefreshStatus(statusFile: string): CompletionRefreshStatus | null {
-  if (!fs.existsSync(statusFile)) {
-    return null;
-  }
-  try {
-    return JSON.parse(fs.readFileSync(statusFile, "utf-8")) as CompletionRefreshStatus;
-  } catch {
-    return null;
-  }
-}
-
-function writeCompletionRefreshFlightState(flightDir: string, state: CompletionRefreshFlightState): void {
-  const statePath = path.join(flightDir, "state.json");
-  const tempPath = `${statePath}.${process.pid}.tmp`;
-  fs.writeFileSync(tempPath, `${JSON.stringify(state, null, 2)}\n`, "utf-8");
-  fs.renameSync(tempPath, statePath);
-}
-
-function updateCompletionRefreshFlightState(
-  flightDir: string,
-  update: (state: CompletionRefreshFlightState) => CompletionRefreshFlightState,
-): CompletionRefreshFlightState {
-  const lockPath = path.join(flightDir, "state.write.lock");
-  let lockFd: number | undefined;
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    try {
-      lockFd = fs.openSync(lockPath, "wx");
-      break;
-    } catch (error) {
-      if (!isFileAlreadyExistsError(error)) {
-        throw error;
-      }
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    }
-  }
-  if (lockFd === undefined) {
-    // A crashed worker can leave this zero-byte lock indefinitely on Windows.
-    // Reclaim only a lock that has remained unchanged beyond the full bounded
-    // wait; an active writer keeps its fresh mtime and remains protected.
-    try {
-      const ageMs = Date.now() - fs.statSync(lockPath).mtimeMs;
-      if (ageMs >= 500) {
-        fs.rmSync(lockPath, { force: true });
-        lockFd = fs.openSync(lockPath, "wx");
-      }
-    } catch (error) {
-      if (!isFileAlreadyExistsError(error)) throw error;
-    }
-  }
-  if (lockFd === undefined) {
-    throw new ClawError(
-      "PROJECT_CONFIG_INVALID",
-      "Completion refresh single-flight state is busy; system recovery will retry on a later entry.",
-      { lockPath },
-    );
-  }
-  try {
-    const current = readCompletionRefreshFlightState(flightDir);
-    if (!current) {
-      throw new ClawError("PROJECT_CONFIG_INVALID", "Completion refresh single-flight state is missing.");
-    }
-    const next = update(current);
-    writeCompletionRefreshFlightState(flightDir, next);
-    return next;
-  } finally {
-    fs.closeSync(lockFd);
-    fs.rmSync(lockPath, { force: true });
-  }
-}
-
-function writeCompletionRefreshFinalStatuses(
-  flightDir: string,
-  leaderStatusFile: string,
-  status: CompletionRefreshStatus,
-  coveredStatusFiles?: string[],
-  coveredRequestHash?: string,
-): void {
-  const flight = readCompletionRefreshFlightState(flightDir);
-  const statusFiles = flight?.statusFiles ?? [leaderStatusFile];
-  for (const target of statusFiles) {
-    // A request arriving after the last indexing snapshot is still pending,
-    // not a successful refresh merely because it joined the leader envelope.
-    if (coveredStatusFiles && !coveredStatusFiles.includes(target) && flight?.requestedDirtyHash !== coveredRequestHash) continue;
-    const payload = target === leaderStatusFile
-      ? status
-      : { ...status, coalesced: true, leaderStatusFile };
-    writeCompletionStatusAtomic(target, { ...payload, taskName: tryReadCompletionRefreshStatus(target)?.taskName ?? payload.taskName });
-  }
-  fs.rmSync(flightDir, { recursive: true, force: true });
-}
-
-function isCompletionRefreshFlightStale(state: CompletionRefreshFlightState): boolean {
-  if (state.pid) {
-    try {
-      process.kill(state.pid, 0);
-      return false;
-    } catch {
-      return true;
-    }
-  }
-  return Date.now() - Date.parse(state.queuedAt) > 60_000;
-}
-
-function isFileAlreadyExistsError(error: unknown): boolean {
-  return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "EEXIST";
-}
-
-function computeCompletionDirtyHash(
-  cwd: string,
-  taskName: string,
-  operations: CompletionRefreshOperation[],
-): string {
-  const hash = createHash("sha256");
-  hash.update(JSON.stringify([...operations].sort()));
-  const project = resolveProjectContext(cwd);
-  const roots = [
-    path.join(project.clawDir, "truth"),
-    findTaskDirectory(project, taskName) ?? path.join(project.tasksDir, taskName),
-  ];
-  const files = roots.flatMap((root) => listCompletionFingerprintFiles(root)).sort();
-  for (const filePath of files) {
-    hash.update(path.relative(cwd, filePath));
-    hash.update(fs.readFileSync(filePath));
-  }
-  const gitStatus = runCommand("git", ["status", "--porcelain=v1", "--untracked-files=no"], cwd);
-  if (!commandFailed(gitStatus)) {
-    hash.update(gitStatus.stdout ?? "");
-    const gitDiff = runCommand("git", ["diff", "--no-ext-diff", "--binary"], cwd);
-    if (!commandFailed(gitDiff)) {
-      hash.update(gitDiff.stdout ?? "");
-    }
-  }
-  return hash.digest("hex");
-}
-
-function listCompletionFingerprintFiles(root: string): string[] {
-  if (!fs.existsSync(root)) {
-    return [];
-  }
-  const stat = fs.statSync(root);
-  if (stat.isFile()) {
-    return /\.(?:md|json)$/i.test(root) ? [root] : [];
-  }
-  const files: string[] = [];
-  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-    if (entry.name === "logs" || entry.name.endsWith(".sqlite")) {
-      continue;
-    }
-    const child = path.join(root, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...listCompletionFingerprintFiles(child));
-    } else if (/\.(?:md|json)$/i.test(entry.name)) {
-      files.push(child);
-    }
-  }
-  return files;
-}
-
-function createCompletionRefreshStatusFile(clawDir: string, taskName: string, startedAt: string): string {
-  const stamp = startedAt.replace(/[:.]/g, "-");
-  const safeTaskName = taskName.replace(/[^a-zA-Z0-9._-]+/g, "-");
-  return path.join(clawDir, "logs", "completion-refresh", `${stamp}-${safeTaskName}.json`);
+      finish({ ...result, ok: failures.length === 0,
+        ...(failures.length ? { failures, error: failures[0] } : {}) });
+    });
+    if (!attempt.acquired) finish({ ok: true, skipped: "busy" });
+  } catch (error) { finish({ ok: false, error: refreshError(error) }); }
 }
 
 function refreshGitNexusIfEnabled(

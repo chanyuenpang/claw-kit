@@ -81,7 +81,7 @@ export type ClawCommandResult = {
   knowledgeDispatch?: ClawKnowledgeDispatch;
 };
 
-import { scheduleCompletionRefreshRecovery } from "./completion-refresh-scheduler.js";
+import { queueCompletionRefresh, type CompletionRefreshInput } from "./completion-refresh.js";
 
 export class ClawCommandService {
   readonly registry: SessionRegistryV2;
@@ -89,7 +89,7 @@ export class ClawCommandService {
 
   constructor(
     registry: SessionRegistryV2,
-    private readonly scheduleRefresh = scheduleCompletionRefreshRecovery,
+    private readonly scheduleRefresh: (input: CompletionRefreshInput) => unknown = queueCompletionRefresh,
   ) {
     this.registry = registry;
     this.focusStore = new RegistryFocusSessionStore(registry);
@@ -190,18 +190,25 @@ export class ClawCommandService {
     context: CommandContext,
     request: ClawCommandRequest,
   ): Promise<ClawCommandResult> {
-    // Receipt reconciliation must not run unrelated canonical recovery effects.
-    if (["knowledge.claim.receipt", "knowledge.done.receipt"].includes(request.operation)) return this.executeCommand(context, request);
-    if (request.operation === "knowledge.done") {
-      const result = await this.executeCommand(context, request);
-      this.scheduleRefresh(context.cwd, context.agentSessionId);
-      return result;
+    const result = await this.executeCommand(context, request);
+    // Only this successful command's current opportunity. No historical scans,
+    // durable refresh receipts, retry queue, or maintenance on read-only calls.
+    try {
+      for (const effect of result.postCommitEffects ?? []) {
+        if (effect.type !== "completion.refresh") continue;
+        const project = resolveWorkflowProjectContext(context.cwd, context.agentSessionId);
+        this.scheduleRefresh({ cwd: context.cwd, taskName: effect.taskName,
+          includeTaskRetention: project.scope !== "session" });
+      }
+      const output = result.output as { completed?: boolean; alreadyDone?: boolean } | undefined;
+      if (request.operation === "knowledge.done" && output?.completed && !output.alreadyDone) {
+        this.scheduleRefresh({ cwd: context.cwd, taskName: "knowledge-complete",
+          includeTaskRetention: false, includeGitNexus: false });
+      }
+    } catch (error) {
+      process.stderr.write("Completion refresh skipped: " + JSON.stringify(serializeFailure(error, { fallbackCode: "COMPLETION_REFRESH_FAILED", origin: "cli", operation: "completion.refresh" })) + "\n");
     }
-    // Historical scans, hashing, locks and worker launch/recovery are optional
-    // system work, not part of a business command's execution/response budget.
-    // Schedule after the owner attempt so a newly committed terminal is visible.
-    try { return await this.executeCommand(context, request); }
-    finally { this.scheduleRefresh(context.cwd, context.agentSessionId); }
+    return result;
   }
 
   private async executeCommand(context: CommandContext, request: ClawCommandRequest): Promise<ClawCommandResult> {

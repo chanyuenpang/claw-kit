@@ -66,15 +66,12 @@ test("main-agent Codex surfaces expose only the internal subagent dispatch contr
   assert.match(mainRouter, /knowledgeDispatch/);
   assert.match(entry, /Cancellation\/replacement uses the host's supported leave transition/);
   assert.match(entry, /Do not require successful finalization to\s+detach canceled work/);
-  assert.match(mainRouter, /Terminal dispatch gate \(Codex\)/);
-  assert.match(mainRouter, /highest-priority closeout obligation/);
-  assert.match(mainRouter, /Complete this handoff through the designated knowledge finalizer/);
-  assert.match(mainRouter, /Do not skip the handoff because it was easy to miss/);
-  assert.match(mainRouter, /launch one isolated worker for that exact `finalizeId`/);
-  assert.match(mainRouter, /Do not reuse a worker/);
-  assert.match(mainRouter, /knowledge_finalizer_<first 12 chars of finalizeId>/);
-  assert.match(mainRouter, /spawn_agent/);
-  assert.match(mainRouter, /Do not wait for the new writer/i);
+  assert.match(mainRouter, /launch one isolated native\s+worker with its unchanged prompt, `fork_turns: "none"`/);
+  assert.match(mainRouter, /name based on\s+`dispatchId`/);
+  assert.match(mainRouter, /After accepted handoff, finish the lead response without waiting/);
+  assert.match(mainRouter, /worker calls `knowledge materials` through this driver/);
+  assert.match(mainRouter, /no claim\/token\/receipt or separate done\s+registration/);
+  assert.match(mainRouter, /Old knowledge jobs are compatibility data, not a recovery queue/);
   assert.doesNotMatch(mainRouter, /claw-kit:delegate-writer/);
 });
 

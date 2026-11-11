@@ -20,6 +20,6 @@
   },
   "sharedSkills": {
     "package": "@veewo/claw-skills",
-    "minVersion": "0.2.66"
+    "minVersion": "0.2.68"
   }
 }

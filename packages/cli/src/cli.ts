@@ -8,8 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { createHash } from "node:crypto";
-import { reconcileCompletionRefresh, recoverCompletionRefreshBestEffort } from "./completion-refresh-recovery.js";
-import { queueCompletionRefresh, runCompletionRefresh, runCommand, commandFailed, type CompletionRefreshResult } from "./completion-refresh.js";
+import { queueCompletionRefresh, runCommand, commandFailed, type CompletionRefreshResult } from "./completion-refresh.js";
 import { spawn, spawnSync } from "node:child_process";
 import {
   builtInSkillName,
@@ -595,16 +594,6 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       { flag: "<event-name>", detail: "(required) Hook command name (`auto-doc` or Stop)." },
     ],
   },
-  "internal-completion-refresh": {
-    usage: ["{script} internal-completion-refresh --cwd <dir> --task <name> --status-file <path>"],
-    description:
-      "Internal: runs the background completion refresh (memory reindex + optional gitnexus refresh) and writes status to --status-file. Spawned detached by plan done / direct; not intended for direct use.",
-    options: [
-      { flag: "--cwd <dir>", detail: "(required) Project root." },
-      { flag: "--task <name>", detail: "(required) Task name." },
-      { flag: "--status-file <path>", detail: "(required) Status file path to update." },
-    ],
-  },
   "internal-knowledge-dispatch": {
     usage: ["{script} internal-knowledge-dispatch --job <path>"],
     description: "Internal: returns the canonical background knowledge-writer dispatch for an adapter-owned native runner.",
@@ -682,7 +671,6 @@ async function main(): Promise<void> {
 
   try {
     assertForegroundInvocationHost(command, args, effectiveHost);
-    if (command && !command.startsWith("internal-")) recoverCompletionRefreshBestEffort(process.cwd(), resolveOwnerSessionKey() ?? undefined);
     switch (command) {
       case "init":
         const initInput: InitProjectInput = {
@@ -781,9 +769,6 @@ async function main(): Promise<void> {
       case "help":
         printHelp(args);
         return;
-      case "internal-completion-refresh":
-        runInternalCompletionRefresh(args);
-        return;
       case "internal-knowledge-pending":
         runInternalKnowledgePending(args);
         return;
@@ -832,10 +817,6 @@ async function main(): Promise<void> {
     }
   } catch (error) {
     handleError(error);
-  } finally {
-    if (command && (!command.startsWith("internal-") || command === "internal-knowledge-complete")) {
-      recoverCompletionRefreshBestEffort(process.cwd(), resolveOwnerSessionKey() ?? undefined);
-    }
   }
 }
 
@@ -2795,7 +2776,7 @@ function ensureLegacyKnowledgeClaim(jobPath: string): KnowledgeFinalizationJob |
 function completeKnowledgeFinalizationJob(jobPath: string, result: string, claimToken: string): void {
   printJson(doneKnowledgeCommand({
     jobPath, result, claimToken, status: "succeeded",
-    onSuccess: (running) => recoverCompletionRefreshBestEffort(running.projectRoot, running.sessionId),
+    onSuccess: (running) => { queueCompletionRefresh({ cwd: running.projectRoot, taskName: running.taskName, includeTaskRetention: false, includeGitNexus: false }); },
   }));
 }
 
@@ -3883,14 +3864,16 @@ type PreparedPlanTerminalRefresh = {
   queue: (taskName: string) => CompletionRefreshResult | undefined;
 };
 
-function preparePlanTerminalRefresh(cwd: string, ownerSessionKey: string | undefined): PreparedPlanTerminalRefresh | undefined {
-  const workflowProject = resolveWorkflowProjectContext(cwd, ownerSessionKey);
-  const refreshProject = tryResolveHookProject(workflowProject.projectRoot);
-  if (!refreshProject) return undefined;
+function preparePlanTerminalRefresh(cwd: string, ownerSessionKey: string | undefined): PreparedPlanTerminalRefresh {
   return {
-    queue: () => {
-      try { return reconcileCompletionRefresh(refreshProject.projectRoot, ownerSessionKey).at(-1); }
-      catch (error) { process.stderr.write("Completion refresh deferred: " + String(error) + "\n"); return undefined; }
+    queue: (taskName) => {
+      try {
+        const workflowProject = resolveWorkflowProjectContext(cwd, ownerSessionKey);
+        const project = tryResolveHookProject(workflowProject.projectRoot);
+        if (!project) return undefined;
+        return queueCompletionRefresh({ cwd: project.projectRoot, taskName,
+          includeTaskRetention: workflowProject.scope !== "session" });
+      } catch (error) { process.stderr.write("Completion refresh skipped: " + JSON.stringify(serializeFailure(error, { fallbackCode: "COMPLETION_REFRESH_FAILED", origin: "cli", operation: "completion.refresh" })) + "\n"); return undefined; }
     },
   };
 }
@@ -3909,15 +3892,11 @@ function resolveCliEntryPath(): string {
   return process.argv[1]!;
 }
 
-function runInternalCompletionRefresh(args: string[]): void {
-  runCompletionRefresh({ cwd: readRequiredFlag(args, "--cwd"), taskName: readRequiredFlag(args, "--task"), statusFile: readRequiredFlag(args, "--status-file") });
-}
-
 function compactCompletionRefresh(completionRefresh: CompletionRefreshResult): Record<string, unknown> {
   return {
     taskRetention: {
       enabled: completionRefresh.taskRetention.enabled,
-      status: completionRefresh.taskRetention.enabled ? "queued" : "disabled",
+      status: completionRefresh.taskRetention.enabled ? (completionRefresh.asyncRefresh.queued ? "queued" : "skipped") : "disabled",
       maxTasksToKeep: completionRefresh.taskRetention.maxTasksToKeep,
       archivedCurrentTask: completionRefresh.taskRetention.archivedCurrentTask
         ? {
@@ -3940,13 +3919,7 @@ function compactCompletionRefresh(completionRefresh: CompletionRefreshResult): R
       startedAt: completionRefresh.asyncRefresh.startedAt,
       statusFile: completionRefresh.asyncRefresh.statusFile,
       operations: completionRefresh.asyncRefresh.operations,
-      dirtyHash: completionRefresh.asyncRefresh.dirtyHash,
-      ...(completionRefresh.asyncRefresh.coalesced
-        ? {
-            coalesced: true,
-            leaderStatusFile: completionRefresh.asyncRefresh.leaderStatusFile,
-          }
-        : {}),
+      ...(completionRefresh.asyncRefresh.error ? { error: completionRefresh.asyncRefresh.error } : {}),
     },
   };
 }

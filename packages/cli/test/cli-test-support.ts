@@ -339,7 +339,7 @@ export function createGitnexusShim(mode: "fallback" | "primary" | "lock-once" | 
   const binDir = createTemporaryDirectory("claw-kit-gitnexus-bin-");
   const logPath = path.join(binDir, "gitnexus.log");
   const cmdPath = path.join(binDir, "gitnexus.cmd");
-const jsPath = path.join(binDir, "gitnexus-shim.js");
+const jsPath = path.join(binDir, "gitnexus-shim.cjs");
   const lockMarkerPath = path.join(binDir, "lock-once.marker");
   const script = `
 const fs = require("node:fs");
@@ -411,7 +411,7 @@ export function createNpmShim(mode: "fail-install" | "pass"): { binDir: string; 
   const binDir = createTemporaryDirectory("claw-kit-npm-bin-");
   const logPath = path.join(binDir, "npm.log");
   const cmdPath = path.join(binDir, "npm.cmd");
-  const jsPath = path.join(binDir, "npm-shim.js");
+  const jsPath = path.join(binDir, "npm-shim.cjs");
   const missingGitnexusCmdPath = path.join(binDir, "gitnexus.cmd");
   const missingGitnexusPath = path.join(binDir, "gitnexus");
   const script = `

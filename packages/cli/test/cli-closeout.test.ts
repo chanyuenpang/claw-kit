@@ -887,9 +887,9 @@ test("cli direct queues completion refresh without main-agent deposition guidanc
   assert.equal(fs.existsSync(path.join(root, ".claw", "memory.sqlite")), false);
 });
 
-test("overlapping direct closeouts coalesce into one completion refresh", async () => {
+test("overlapping direct closeouts skip a busy refresh without creating a retry chain", async () => {
   const root = createFixture("direct-single-flight");
-  const shim = createGitnexusShim("primary", 750);
+  const shim = createGitnexusShim("primary", 2000);
   const env = {
     CLAW_EMBEDDING_MOCK: "1",
     PATH: `${shim.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
@@ -906,8 +906,7 @@ test("overlapping direct closeouts coalesce into one completion refresh", async 
     getCompletionRefreshStatusFiles(root).map((statusFile) => waitForCompletionRefreshStatus(statusFile)),
   );
   assert.equal(statuses.every((status) => status.ok === true), true);
-  assert.equal(statuses.some((status) => status.coalesced === true), true);
-  assert.equal(Math.max(...statuses.map((status) => Number(status.coalescedCount ?? 0))), 1);
+  assert.equal(statuses.some((status) => status.skipped === "busy"), true);
   const analyzeCalls = fs.readFileSync(shim.logPath, "utf-8")
     .split(/\r?\n/)
     .filter((line) => line === "analyze --embeddings --no-ai-context");

@@ -97,7 +97,7 @@ test("Codex routed reference preserves lifecycle and the exact mutation bridge",
   assert.match(entry, /Keep harness mechanics out of normal replies/);
   assert.match(host, /argv: \["plan", "create", "<title>"\]/);
   assert.match(host, /```javascript[\s\S]*runClawPlanMutation[\s\S]*```/);
-  assert.match(host, /claw-kit:codex-driver:v27:s1/);
+  assert.match(host, /const cacheKey = "claw-kit:codex-driver:v\d+:s\d+"/);
   assert.match(host, /typeof envelope\?\.source !== "string"/);
   assert.doesNotMatch(host, /npm install --global @veewo\/claw/);
   assert.doesNotMatch(host, /CLI repair failed/);
@@ -121,11 +121,12 @@ test("Codex main-agent bundle exposes only structured internal closeout dispatch
 
   assert.doesNotMatch(skill, /truth-writer|adr-writer|claw-kit:knowledge-writer|claw-kit:delegate-writer/i);
   assert.match(skill, /knowledgeDispatch/);
-  assert.match(host, /spawn_agent/);
-  assert.match(host, /for that exact `finalizeId`/);
-  assert.match(host, /Do not reuse a worker/);
-  assert.match(host, /immediately end the main turn after the accepted handoff/);
-  assert.match(host, /Do not wait for the new writer/);
+  assert.match(host, /launch one isolated native\s+worker with its unchanged prompt/);
+  assert.match(host, /`fork_turns: "none"`/);
+  assert.match(host, /name based on\s+`dispatchId`/);
+  assert.match(host, /After accepted handoff, finish the lead response without waiting/);
+  assert.match(host, /worker calls `knowledge materials` through this driver/);
+  assert.match(host, /no claim\/token\/receipt or separate done\s+registration/);
   assert.doesNotMatch(reference, forbidden);
   assert.doesNotMatch(manifest, forbidden);
   await assert.rejects(fs.access(skillUrl("delegate-writer/SKILL.md", adapterRoot)));

@@ -1,4 +1,4 @@
-﻿# Local claw CLI
+# Local claw CLI
 
 <!-- state: current -->
 ## Core facts
@@ -70,18 +70,18 @@
 - `packages/core/src/embedding-worker.ts` 现在在执行 embedding batch 前先通过 `resolveLocalTokenizerMaxLength(...)` 把 tokenizer 的 `max_length` clamp 到模型真实 positional limit；对 `Snowflake/snowflake-arctic-embed-m-v2.0`，即使 tokenizer 暴露 `model_max_length = 32768`，安全运行上限也应视为 `8192`。
 - 这次可复现的 refresh 停滞根因是 local ONNX embedding failure，而不是缺源或 refresh no-op；失败复现批次里 `.claw/truth/SUMMARY.md` 的 chunk 3 被分词到 `19339` tokens，并在 `Snowflake` local model 里触发了 `SkipLayerNormalization`。
 - 修复生效后，之前失败的复现路径已经恢复成功；在 `tiny-world` 的真实 `search index --refresh` 中，索引从 `100` docs 前进到 `200` docs，`pendingFileCount` 降到 `217`。
-- Windows 下 workflow origin 位于有效 claw 项目的 terminal plan transition（`claw plan done`、`claw plan edit --status end.*` 或 `claw plan leave`）会先把 JSON 结果返回给调用方，再通过外部 launcher 异步启动 `internal-completion-refresh`；不再直接在同一个主 CLI 进程里用 `detached + unref` 后台化 refresh。Session scope 只跳过 knowledge finalization 与 task retention。
-- `packages/cli/src/cli.ts` 里的 completion refresh status file 现在会显式经历 `queued` / `running` / `finished` 生命周期；如果 refresh 失败，失败 payload 仍写回同一个 status file。
+- 计划终态、首次成功的 legacy `knowledge.done` 与已有 `direct` / `knowledge.complete` 入口只触发一次机会式后台维护，不承诺必达。Windows 外部 launcher 只等待有界启动确认，不等待维护完成；worker 走专用 `completion-refresh-entry`，不再走主 CLI 或历史恢复入口。Session scope 不执行 task retention。
+- completion refresh 的单次日志可经历 `queued` / `running` / `finished` 或 `skipped`，仅用于诊断，写失败不阻止维护；不保存 durable refresh receipt，不扫描历史计划/job/日志补偿，不生成镜像或恢复待办。失败后由后续独立机会处理当前状态，绝不重放旧业务。
 - `packages/core/src/memory.ts` 现在给 `embedding-worker.js` 加了默认 30 分钟硬超时，并把 `timedOut` / `timeoutMs` 写进失败细节，避免异步 refresh 因 embedding 子进程无限挂起而长期占住 sqlite lock。
 - Windows closeout archive pruning no longer uses `fs.rmSync(..., { recursive: true })`: non-ASCII archived task directories can fail or terminate silently on that path, so `packages/core/src/task-retention.ts` now removes archive trees with explicit recursive `unlinkSync` / `rmdirSync`, and `packages/core/test/core.test.ts` covers non-ASCII archive pruning.
-- terminal plan transition 会先同步持久化 plan 与 retrospective；只有 project scope 会创建 knowledge-finalization job 并构造 `knowledgeDispatch`，随后任何有效 claw-project origin 都会排队 detached completion refresh；GitNexus readiness、自动安装/setup、matching-model cache seeding、embedding enablement 与 analyze 都不再位于 terminal dispatch 的同步关键路径。
+- terminal plan transition 先由原 owner 持久化 plan 与 retrospective 并按宿主合同构造知识派发；随后尽力触发后台维护。业务恢复和知识整理不属于被删除的刷新补偿链。GitNexus readiness、自动安装/setup、cache seeding、embedding 与 analyze 不进入业务提交关键路径。
 - project memory、task memory 与适用的 GitNexus refresh 都只在 detached completion-refresh worker 中执行。GitNexus 安装、setup 或 analyze 失败不会撤销或阻断已经成功返回的 terminal plan result / `knowledgeDispatch`，而是写入 completion refresh status file 的失败 payload。
 - 当 canonical `gitnexus = true` 时，completion refresh 会在 worker 内确保 CLI 可用、按需预热 matching-model cache，并在 GitNexus 尚未持久化 embeddings 时执行 `gitnexus analyze --embeddings --no-ai-context`；如果已安装 CLI 不支持 `--no-ai-context`，仍回退到 plain analyze。
 - 本文是 GitNexus analyze 运行时恢复行为的当前 Truth owner：在 Windows 上，只有 analyze 子进程以无符号退出状态 `0xC0000005`（access violation）结束时，`runGitNexusAnalyze()` 才会追加 `--force` 重建并重试一次；重试仍保留 `--embeddings` 与 `--no-ai-context` / plain-analyze fallback 语义，其他失败继续走既有错误路径。
 - 2026-07-19 的 `@veewo/gitnexus@1.5.9` 故障实例把该签名定位到既有 `.gitnexus/lbug` LadybugDB 索引损坏：fresh indexing 成功，force rebuild 后 `status`、`query`、`context` 恢复。该实例是版本化诊断证据，不表示所有 `0xC0000005` 都必然由同一种损坏造成。
 - 对该旧索引的只读回溯进一步把损坏原因收窄为高置信度的同库并发写入：2026-07-06 17:27:51–17:29:10 至少有 `14` 次 completion refresh 重叠启动 GitNexus analyze，历史日志依次留下 orphan `lbug.shadow`、`lbug.wal` Database ID mismatch、`lbug` lock failure、`bad allocation`，最后出现同一 `3221225477 / 0xC0000005`。结合 GitNexus force rebuild 会替换 LadybugDB 文件，这条链足以把重叠 analyze 判为约 `90–95%` 置信度的原因；旧文件已重建，因此不能再声称有逐字节法证。
 - 2026-07-19 在 GitNexus `nantas-dev` 基线 `12b3c35851336f80b5faee780014f9d18c677742` 上的后续调查直接复现了两个 CLI 进程争用同一 LadybugDB：旧实现只有进程内锁，两个进程会交错删除、创建和写入 `lbug`、`lbug.wal` 与 `lbug.lock`，删除失败会被吞掉，非 `already exists` 的 schema 错误也会被降级。当前检查到的修复分支提交 `afac14783c87c442fe4637635100976e99e1bc58` 已把这条链改为覆盖整个 metadata-check/rebuild 生命周期的 per-repository `analyze.lock`：owner 使用 PID、token 与原子目录操作，存活 owner 不会被抢占，只有 dead PID 或超过保护期的 ownerless lock 可回收；LadybugDB artifact 删除、非 `already exists` schema 错误和 analyze 主路径 close 失败都会向上失败。
-- 上述 GitNexus 修复是已检查的 fix-branch 行为，不等于当前已发布的 `@veewo/gitnexus@1.5.9` 已经包含它。claw-kit 的 completion-refresh project single-flight 仍是独立的调用侧完整性边界，精确 `0xC0000005` 的一次性 `--force` 恢复也暂时保留；只有在包含该修复的 GitNexus 发布并经过长期验证后，才适合重新评估是否删除调用侧恢复。
+- 上述 GitNexus 修复是已检查的 fix-branch 行为，不等于当前已发布的 `@veewo/gitnexus@1.5.9` 已经包含它。claw-kit 的 completion-refresh project mutex（忙时跳过，不排队补偿）仍是独立的调用侧完整性边界，精确 `0xC0000005` 的一次性 `--force` 恢复也暂时保留；只有在包含该修复的 GitNexus 发布并经过长期验证后，才适合重新评估是否删除调用侧恢复。
 - 同一历史环境能成功创建 fresh index，且损坏发生时 GitNexus 模型未发生切换，因此该实例不支持“模型变化”“`@veewo/gitnexus@1.5.9` / Node 普遍不兼容”或“只是索引陈旧”作为原因。这里排除的是该版本化事故的替代解释，不是对所有未来故障的全局保证。
 - 该次重建后的另一次 refresh 在 index 与 `meta.json` 已成功写入、`status` / `query` 仍健康后才以 `0xC0000374` 退出；它更符合原生退出清理阶段的 heap-corruption 假失败，而不是索引再次损坏。后续调查的 `24` 次最小 close/exit 探针和 `6` 次真实串行 analyze 都退出 `0`，Windows Application Error 也没有对应事件，因此这个根因仍未确认，不能据此猜测性修改 close 策略或增加重试。当前 `runGitNexusAnalyze()` 不会对这个不同签名自动 `--force`，诊断时应先区分已写入后的退出失败与不可读索引。
 - claw project memory 与 GitNexus 各自拥有 embedding model；claw 只在 model id 匹配时 best-effort 预热 GitNexus cache，不会用 `memory.embedding.model` 改写 GitNexus 的模型选择。
