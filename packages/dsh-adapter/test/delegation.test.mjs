@@ -272,9 +272,16 @@ test("native continuable roles reuse exact catalog identity", async (t) => {
   assert.equal(f.store.receipt(a.assignment_id).memberId, f.store.receipt(b.assignment_id).memberId);
 });
 
-test("native activation completion proves child catalog identity", async (t) => {
+test("native worker completes before activation acknowledgment without a catalog recheck", async (t) => {
   const f = await fixture(t, "one-shot");
-  f.state.onStart = async (actor, prompt) => { const result = await f.api.complete(actor, f.workdir, { assignment_id: idFromPrompt(prompt), status: "completed", result: "one-shot evidence" }); assert.equal(result.status, "completed"); };
+  f.state.onStart = async (actor, prompt) => {
+    const listChildren = f.services.subagents.listChildren;
+    f.services.subagents.listChildren = () => { throw new Error("Completion must not require catalog evidence"); };
+    try {
+      const result = await f.api.complete(actor, f.workdir, { assignment_id: idFromPrompt(prompt), status: "completed", result: "one-shot evidence" });
+      assert.equal(result.status, "completed");
+    } finally { f.services.subagents.listChildren = listChildren; }
+  };
   const a = await f.api.start(f.parent, f.workdir, "one", { role: "researcher", brief: "q" });
   assert.equal(a.status, "completed"); const r = f.store.receipt(a.assignment_id);
   assert.equal(r.memberId, "actual-session-1"); assert.equal(r.runId, "actual-session-1");

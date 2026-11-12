@@ -58,6 +58,14 @@ Capabilities, catalogs, descriptions, versions, model preferences, projected sch
 
 Advisory failure produces a bounded warning, an `unknown` display value, or a different callable route. It must not become permission, identity, or success evidence.
 
+## Do not solve imagined problems with blocking checks
+
+A possible exception is not by itself a product problem. Before adding or retaining a gate in changed code, identify a concrete reachable failure and explain which existing owner guarantee is insufficient. Include false-rejection cost and recovery work, not only missed-invalid cases. Do not invent incident rates or require historical incidents for a demonstrably serious irreversible risk; state evidence and uncertainty honestly.
+
+Prefer removing unsupported or duplicate checks over expanding accepted-shape lists, version branches, fallback state machines, or manual recovery. Host-owned identity facts and incidental presentation fields are different: a parent-scoped native service record may have `id/mode/label` without the `kind: "child"` tag added by a tool view. The missing tag does not demonstrate a foreign caller. Use the authoritative Host fact, not a second authorization policy derived from the projection.
+
+For a reproduced boundary defect, exercise the actual adapter entry with the minimal real Host record. A test that injects a correct resolver cannot detect a faulty production resolver. Verify preserved progress and only the boundaries whose necessity is justified. These are review questions, not a mandate for another validation framework, approval process, or metadata snapshot matrix.
+
 ## Required hard-gate record
 
 Every new or materially tightened preflight must state in the design, ADR, or code review:

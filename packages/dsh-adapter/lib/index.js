@@ -265,12 +265,10 @@ export function apply(ctx) {
             const parent = registry?.get?.(parentId);
             if (!parent || parent.id !== parentId)
                 throw new Error("DELEGATE_PARENT_UNAVAILABLE");
-            const native = c.get("subagents");
-            const children = await native?.listChildren?.(parentId);
-            if (!Array.isArray(children)
-                || children.some(child => child.kind === "diagnostic" && child.id === actor.id))
-                throw new Error("DELEGATE_PARENT_UNAVAILABLE");
-            return children.some(child => child.kind === "child" && child.id === actor.id) ? parent : actor;
+            // DSH owns caller/session identity. The durable parentSession link is
+            // authoritative; optional catalog/tool-view tags are not authorization.
+            // complete() separately proves the actor owns the exact assignment.
+            return parent;
         },
         readContext: async (actor) => {
             const workdir = await resolveWorkdir(actor, resolveRegistry());

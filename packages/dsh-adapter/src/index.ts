@@ -302,11 +302,10 @@ export function apply(ctx: unknown): void {
       const registry = c.get("agents") as { get?(id: string): unknown } | undefined;
       const parent = registry?.get?.(parentId) as DelegationActor | undefined;
       if (!parent || parent.id !== parentId) throw new Error("DELEGATE_PARENT_UNAVAILABLE");
-      const native = c.get("subagents") as { listChildren?(id: string): Promise<Array<{ kind?: string; id?: string }>> } | undefined;
-      const children = await native?.listChildren?.(parentId);
-      if (!Array.isArray(children)
-        || children.some(child => child.kind === "diagnostic" && child.id === actor.id)) throw new Error("DELEGATE_PARENT_UNAVAILABLE");
-      return children.some(child => child.kind === "child" && child.id === actor.id) ? parent : actor;
+      // DSH owns caller/session identity. The durable parentSession link is
+      // authoritative; optional catalog/tool-view tags are not authorization.
+      // complete() separately proves the actor owns the exact assignment.
+      return parent;
     },
     readContext: async (actor) => {
       const workdir = await resolveWorkdir(actor, resolveRegistry());

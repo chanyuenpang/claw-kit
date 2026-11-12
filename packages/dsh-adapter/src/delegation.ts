@@ -421,21 +421,14 @@ export class RoleDelegation {
     catch (error) { const primary = serializeFailure(error, { fallbackCode: "DELEGATE_RECEIPT_PERSIST_FAILED", operation: "delegate.delivery.persist", origin: "dsh" });
       throw Object.assign(new Error(primary.message), { ...primary, deliveryAccepted: true, acceptedReceiptId: receipt }); }
   }
-  private async proveWorker(parent: DelegationActor, actor: DelegationActor, r: Receipt): Promise<void> {
+  private async proveWorker(actor: DelegationActor, r: Receipt): Promise<void> {
     if (r.delivery === "reserved") reject("DELEGATE_NOT_DELIVERED");
-    if (r.backend === "team") {
-      const team = this.deps.getService("agentTeams") as any;
-      const membership = team?.tryMembership?.(actor);
-      if (r.memberId !== actor.id || membership?.root?.id !== parent.id || membership?.id !== r.teamId || membership?.role !== "teammate") reject("DELEGATE_FOREIGN_WORKER");
-      return;
-    }
-    const native = this.deps.getService("subagents") as any;
-    if (typeof native?.listChildren !== "function") reject("DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
-    const rows = await this.nativeCatalog(native, parent.id);
-    if (this.targetDiagnostic(rows, actor.id)) reject("DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
-    const matching = rows.filter((m: any) => (m.kind === undefined || m.kind === "child") && m.id === actor.id && m.label === r.label
-      && m.mode === (r.backend === "native-one-shot" ? "one-shot" : "continuable"));
-    if (matching.length !== 1 || (r.memberId && r.memberId !== actor.id)) reject("DELEGATE_FOREIGN_WORKER");
+    // Host already supplies the caller and parent relation. Correlate an existing
+    // dispatch receipt; do not reauthorize completion through catalog metadata.
+    const workerId = r.memberId ?? r.runId;
+    if (workerId && workerId !== actor.id) reject("DELEGATE_FOREIGN_WORKER");
+    // A one-shot worker may finish inside startActivation before its childId is
+    // returned. Accept its Host-scoped assignment result without a second catalog gate.
   }
   private async validateReport(r: Receipt, documentPath: unknown): Promise<void> {
     if (!string(documentPath) || !r.reportPath || !r.reportDir || !r.taskDir || normalize(path.resolve(r.workdir, documentPath as string)) !== normalize(r.reportPath)) reject("DELEGATE_REPORT_PATH_INVALID");
@@ -449,7 +442,7 @@ export class RoleDelegation {
       if (a.status === "completed") { required(a.result, 64000); if (a.error !== undefined) reject("DELEGATE_INVALID_ARGUMENTS"); } else required(a.error, 8000);
       const scope = await this.scope(actor, workdir, false);
       const r = await this.read(scope.parent, scope.workdir, id);
-      await this.proveWorker(scope.parent, actor, r);
+      await this.proveWorker(actor, r);
       if (r.output === "reply" && a.document_path !== undefined) reject("DELEGATE_REPLY_FORBIDS_FILES");
       if (r.output === "report" && a.status === "completed") await this.validateReport(r, a.document_path);
       if (a.status === "failed" && (a.result !== undefined || a.document_path !== undefined)) reject("DELEGATE_INVALID_ARGUMENTS");

@@ -37,6 +37,11 @@ Account for the total cost of selecting, writing, running, debugging, and mainta
 
 Validation false positives are first-class usability defects: they can block a correct operation, lose progress, and force unnecessary user recovery.
 
+- Blocking checks are not default defensive programming. The author must name a concrete, realistically reachable failure, explain why existing Host/Core guarantees do not contain it, and justify the benefit against false rejections, lost progress, and recovery cost. Hypothetical misuse alone and unsupported probability claims are not evidence; rare but demonstrably irreversible risks may still justify a narrow guard.
+- Apply that burden of proof to existing gates when changing them. First remove or demote unsupported or duplicate checks; do not preserve them by growing format/version allowlists, fallback state machines, or manual recovery steps.
+- Trust Host-owned caller/session facts at the adapter boundary instead of reconstructing authorization from record shapes, optional type/kind tags, display fields, or tool projections. Keep a check only where its owner and concrete failure justify it.
+- For a reproduced adapter boundary bug, use a minimal actual Host service record through the real adapter entry, not only a mock resolver that bypasses the failing code. Verify normal progress and any justified boundary; do not freeze imagined threats into tests.
+
 - Default to calling the authoritative Host/Core business owner once and returning its real result. Do not build stricter adapter-side shadow authorization from tool schemas, catalogs, descriptions, versions, projections, caches, object identity, or optional metadata.
 - A preflight hard gate is allowed only for an authoritative fact whose false negative can cause serious, non-recoverable harm that the owner call or a postcondition cannot contain: host-owned identity/workspace/operation scope, path escape, canonical compare-and-set/claim/delivery identity, proven duplicate irreversible effects, or resend after accepted/outcome-unknown.
 - Every new or tightened hard gate must document its protected fact, unique owner, authoritative evidence, false-negative harm, false-positive harm, why it cannot be deferred to the owner/postcondition, and its smallest failure scope. Without that proof, remove or downgrade it.

@@ -9,7 +9,7 @@ import { buildHostPluginArtifact } from "../../../scripts/host-plugin-artifacts.
 
 // Real installed layout + actual adapter entry. Only Host services/CLI transport
 // are controlled fixtures; no live Team, profile, runtime or canonical plan writes.
-test("claw_run semantic delegation owns identity, report registration and role reuse", async t => {
+for (const backend of ["team", "native"]) test(`claw_run ${backend} delegation owns identity, report registration and role reuse`, async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-role-entry-"));
   const oldHome = process.env.HOME, oldProfile = process.env.USERPROFILE, oldPath = process.env.PATH;
   process.env.HOME = path.join(root, "home"); process.env.USERPROFILE = process.env.HOME;
@@ -73,7 +73,7 @@ test("claw_run semantic delegation owns identity, report registration and role r
     return handle;
   } };
   const teams = {
-    tryMembership: actor => actor === parent ? { root: parent, id: parent.id, role: "lead" }
+    tryMembership: actor => backend !== "team" ? undefined : actor === parent ? { root: parent, id: parent.id, role: "lead" }
       : actors.get(actor.id) === actor ? { root: parent, id: parent.id, role: "teammate" } : undefined,
     listMembers: () => members,
     async spawnTeammate(actor, request) {
@@ -86,10 +86,23 @@ test("claw_run semantic delegation owns identity, report registration and role r
     },
     async sendMessage(actor, request) { assert.equal(actor, parent); messages.push(request); return { messageId: "receipt-" + messages.length, status: "queued" }; },
   };
-  const native = { startActivation() { throw new Error("wrong backend"); }, sendMessage() {}, listChildren: async () => [],
+  const native = {
+    async startActivation(spec) {
+      assert.notEqual(backend, "team"); assert.equal(spec.request.parent, parent);
+      const name = spec.label.includes(":feature-architect:") ? "claw-feature-architect" : "claw-researcher";
+      members.push({ id: spec.childId, name, label: spec.label, mode: "continuable", createdAt: 1 });
+      actors.set(spec.childId, { id: spec.childId, options: parent.options, session: { header: { cwd: project, parentSession: parent.id } } });
+      return { childId: spec.childId, messageId: "bootstrap" };
+    },
+    async sendMessage(actor, id, content) {
+      assert.equal(actor, parent); assert.ok(actors.has(id)); messages.push({ id, content });
+      return "native-receipt-" + messages.length;
+    },
+    // DSH listChildren returns its raw durable catalog without the tool view's kind tag.
+    listChildren: async () => members.map(({ id, label, mode, createdAt }) => ({ id, label, mode, createdAt })),
     getProvider: () => ({ name: "spawn", inheritsParentContext: false, start() {}, prepareContinuable() {}, capabilities: { agentOptions: true } }) };
   const services = { subprocess, agentTeams: teams, subagents: native, agents: { get: id => actors.get(id) },
-    tools: { register: definition => { if (definition.name === "claw_run") tool = definition; }, get: (name, actor) => name === "spawn_teammate" && actor === parent
+    tools: { register: definition => { if (definition.name === "claw_run") tool = definition; }, get: (name, actor) => backend === "team" && name === "spawn_teammate" && actor === parent
       ? { parameters: { name: { type: "string" }, description: { type: "string" }, prompt: { type: "string" } } } : undefined },
     systemPrompt: { context() {}, section() {} } };
   apply({ get: name => services[name], on: (name, callback) => { if (name === "dispose") dispose = callback; } });
@@ -102,11 +115,26 @@ test("claw_run semantic delegation owns identity, report registration and role r
   assert.equal(first.ok, true, JSON.stringify({ first, invocations, requests })); assert.equal(first.status, "running");
   assert.equal(members.length, 1);
   const researcher = actors.get(members[0].id);
-  assert.equal((await invoke("delegate.complete", { assignment_id: first.assignment_id, status: "completed", result: "A answered" }, researcher)).ok, true);
-  assert.equal((await invoke("delegate.result", { assignment_id: first.assignment_id, wait_ms: 0 })).result, "A answered");
   const next = await invoke("delegate.start", { role: "researcher", brief: "Question B", output: "reply" }, parent, "research-B");
-  assert.notEqual(first.assignment_id, next.assignment_id); assert.equal(members.length, 1);
-  assert.equal((await invoke("delegate.complete", { assignment_id: next.assignment_id, status: "completed", result: "B answered" }, researcher)).ok, true);
+  assert.notEqual(first.assignment_id, next.assignment_id); assert.equal(next.status, "pending");
+  assert.equal(messages.length, 1, "queued work is not sent while the first assignment owns the role");
+  const completion = { assignment_id: first.assignment_id, status: "completed", result: "A answered" };
+  assert.equal((await invoke("delegate.complete", completion)).code, "DELEGATE_WORKER_REQUIRED");
+  assert.equal((await invoke("delegate.result", { assignment_id: next.assignment_id, wait_ms: 0 })).status, "pending");
+  assert.equal(messages.length, 1, "a rejected completion does not release the role or resend work");
+  const completed = await invoke("delegate.complete", completion, researcher);
+  assert.equal(completed.ok, true, JSON.stringify(completed));
+  assert.equal((await invoke("delegate.result", { assignment_id: first.assignment_id, wait_ms: 0 })).result, "A answered");
+  assert.equal((await invoke("delegate.result", { assignment_id: next.assignment_id, wait_ms: 0 })).status, "running");
+  assert.equal(messages.length, 2, "authenticated completion releases the queued assignment exactly once");
+  assert.equal((await invoke("delegate.complete", completion, researcher)).status, "completed");
+  assert.equal(messages.length, 2, "idempotent completion does not redeliver queued work");
+  assert.equal(members.length, 1);
+  const listChildren = native.listChildren;
+  native.listChildren = () => { throw new Error("Completion must not recheck the child catalog"); };
+  try {
+    assert.equal((await invoke("delegate.complete", { assignment_id: next.assignment_id, status: "completed", result: "B answered" }, researcher)).ok, true);
+  } finally { native.listChildren = listChildren; }
   assert.equal((await invoke("delegate.result", { assignment_id: next.assignment_id, wait_ms: 0 })).result, "B answered");
   const architecture = await invoke("delegate.start", { role: "feature-architect", brief: "Design bounded routing", output: "auto" }, parent, "architecture-A");
   assert.equal(architecture.status, "running");
