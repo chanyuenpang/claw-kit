@@ -239,6 +239,7 @@ export function apply(ctx: unknown): void {
     workdir: string | undefined,
     sessionId: string,
     stdinPayload?: string,
+    signal?: AbortSignal,
   ): Promise<{ text: string; errText: string }> {
     // After the guard above, subprocess is always present; closure narrowing
     // is lost, so rebind it.
@@ -246,8 +247,10 @@ export function apply(ctx: unknown): void {
     const { executable, args } = process.platform === "win32"
       ? { executable: process.execPath, args: [resolveCommandEntry(), ...argv] }
       : { executable: "claw", args: argv };
+    signal?.throwIfAborted();
     const handle = sp.spawn({
       argv: [executable, ...args],
+      ...(signal ? { signal } : {}),
       cwd: workdir,
       env: { CLAW_SESSION_ID: sessionId },
       stdio: {
@@ -264,7 +267,18 @@ export function apply(ctx: unknown): void {
       }
       handle.stdin.end(stdinPayload);
     }
-    const outcome = await handle.done as { exitCode?: number | null; code?: number | null; signal?: string | null };
+    let onAbort: (() => void) | undefined;
+    const aborted = signal && new Promise<never>((_, reject) => {
+      onAbort = () => reject(signal.reason);
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) onAbort();
+    });
+    let outcome: { exitCode?: number | null; code?: number | null; signal?: string | null };
+    try {
+      outcome = await (aborted ? Promise.race([handle.done, aborted]) : handle.done) as typeof outcome;
+    } finally {
+      if (onAbort) signal!.removeEventListener("abort", onAbort);
+    }
     const readOutput = (reader: { readFrom?(offset: number): { text: string; lossy: boolean }; finalize(): { text: string } } | undefined): string => {
       const collected = reader?.readFrom?.(0);
       if (collected?.lossy) throw new Error("claw one-off output was truncated");
@@ -389,6 +403,42 @@ export function apply(ctx: unknown): void {
         // fail-open
       }
     })();
+  });
+
+  // DSH resets its todo projection at turn/start. Restore it before the first
+  // model step through a private, read-only context call, never a tool call,
+  // prompt update, Goal action or plan.resume. Awaiting the first-step hook
+  // keeps this snapshot ahead of that agent's subsequent workflow mutations.
+  c.on("agent/pre-step", async (payload: unknown, next: unknown) => {
+    const { agent, step, signal } = payload as {
+      agent?: { id?: string; session?: { header?: { cwd?: string }; append(type: string, data: unknown): unknown } };
+      step?: number; signal?: AbortSignal;
+    };
+    if (step === 1 && agent?.id && agent.session) {
+      try {
+        const readSignal = AbortSignal.any([
+          ...(signal ? [signal] : []), finalizerAbort.signal, AbortSignal.timeout(2000),
+        ]);
+        const workdir = await resolveWorkdir(agent, resolveRegistry());
+        if (workdir !== undefined) {
+          const { text } = await runOneOff(["context", "--host", "dsh"], workdir, agent.id, undefined, readSignal);
+          const context = parseProtocol(text);
+          const workflow = context?.activeWorkflow as { planStatus?: string; planContent?: Record<string, unknown> } | undefined;
+          const status = workflow?.planStatus ?? workflow?.planContent?.status;
+          let todos: DshTodo[] | undefined;
+          if (workflow) {
+            todos = typeof status === "string" && status.startsWith("end.")
+              ? [] : projectTodos(undefined, workflow.planContent);
+          } else if ((context?.session as { boundPlan?: boolean } | undefined)?.boundPlan === false) {
+            todos = [];
+          }
+          if (!readSignal.aborted && todos !== undefined) agent.session.append("todo/write", { todos });
+        }
+      } catch {
+        // Display recovery is silent and fail-open; a failed read is not "no plan".
+      }
+    }
+    return (next as () => Promise<unknown>)();
   });
 
   // Workers read source history on demand; parent dispatch does not certify materials.

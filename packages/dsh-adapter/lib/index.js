@@ -195,15 +195,17 @@ export function apply(ctx) {
         }
         return null;
     }
-    async function runOneOff(argv, workdir, sessionId, stdinPayload) {
+    async function runOneOff(argv, workdir, sessionId, stdinPayload, signal) {
         // After the guard above, subprocess is always present; closure narrowing
         // is lost, so rebind it.
         const sp = subprocess;
         const { executable, args } = process.platform === "win32"
             ? { executable: process.execPath, args: [resolveCommandEntry(), ...argv] }
             : { executable: "claw", args: argv };
+        signal?.throwIfAborted();
         const handle = sp.spawn({
             argv: [executable, ...args],
+            ...(signal ? { signal } : {}),
             cwd: workdir,
             env: { CLAW_SESSION_ID: sessionId },
             stdio: {
@@ -220,7 +222,21 @@ export function apply(ctx) {
             }
             handle.stdin.end(stdinPayload);
         }
-        const outcome = await handle.done;
+        let onAbort;
+        const aborted = signal && new Promise((_, reject) => {
+            onAbort = () => reject(signal.reason);
+            signal.addEventListener("abort", onAbort, { once: true });
+            if (signal.aborted)
+                onAbort();
+        });
+        let outcome;
+        try {
+            outcome = await (aborted ? Promise.race([handle.done, aborted]) : handle.done);
+        }
+        finally {
+            if (onAbort)
+                signal.removeEventListener("abort", onAbort);
+        }
         const readOutput = (reader) => {
             const collected = reader?.readFrom?.(0);
             if (collected?.lossy)
@@ -363,6 +379,41 @@ export function apply(ctx) {
                 // fail-open
             }
         })();
+    });
+    // DSH resets its todo projection at turn/start. Restore it before the first
+    // model step through a private, read-only context call, never a tool call,
+    // prompt update, Goal action or plan.resume. Awaiting the first-step hook
+    // keeps this snapshot ahead of that agent's subsequent workflow mutations.
+    c.on("agent/pre-step", async (payload, next) => {
+        const { agent, step, signal } = payload;
+        if (step === 1 && agent?.id && agent.session) {
+            try {
+                const readSignal = AbortSignal.any([
+                    ...(signal ? [signal] : []), finalizerAbort.signal, AbortSignal.timeout(2000),
+                ]);
+                const workdir = await resolveWorkdir(agent, resolveRegistry());
+                if (workdir !== undefined) {
+                    const { text } = await runOneOff(["context", "--host", "dsh"], workdir, agent.id, undefined, readSignal);
+                    const context = parseProtocol(text);
+                    const workflow = context?.activeWorkflow;
+                    const status = workflow?.planStatus ?? workflow?.planContent?.status;
+                    let todos;
+                    if (workflow) {
+                        todos = typeof status === "string" && status.startsWith("end.")
+                            ? [] : projectTodos(undefined, workflow.planContent);
+                    }
+                    else if (context?.session?.boundPlan === false) {
+                        todos = [];
+                    }
+                    if (!readSignal.aborted && todos !== undefined)
+                        agent.session.append("todo/write", { todos });
+                }
+            }
+            catch {
+                // Display recovery is silent and fail-open; a failed read is not "no plan".
+            }
+        }
+        return next();
     });
     // Workers read source history on demand; parent dispatch does not certify materials.
     c.on("dispose", () => {

@@ -31,6 +31,12 @@ DSH 会话
 
 - `agent/session-start` → `claw context --host dsh`，恢复绑定计划并注入紧凑
   workflow 快照（`systemPrompt.context` 名 `claw:workflow`）；
+- `agent/pre-step` 的新 turn 首步：adapter 私下只读查询当前绑定 plan，恢复 DSH
+  因 `turn/start` 清空的原生 todo。活动、等待、讨论阶段装载当前任务；所有 `end.*`
+  或 owner 明确返回无绑定时清理，子计划进入／返回按当前绑定快照切换。
+  该恢复不产生模型工具调用、消息、提示词或 Goal/plan mutation；同一 turn 后续 step
+  不重复查询。读取有 2 秒预算并随 turn 取消／插件卸载中止，失败静默跳过、不误清理
+  或阻断业务。允许宿主清空至恢复完成期间短暂空白，不修改 DSH 本身。
 - 无 turn-stopping 钩子：终态入口通过 Host sessionQuery 冻结有上界的父报告，
   交受信 CLI 发布；adapter 自动选择 Team/native、复用 finalizer，并以每 job
   独立的 claim 与 delegate 终态推进队列，主模型不手工管理 writer。

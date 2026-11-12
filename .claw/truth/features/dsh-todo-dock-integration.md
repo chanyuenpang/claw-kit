@@ -1,4 +1,4 @@
-﻿# DSH native todo dock integration
+# DSH native todo dock integration
 
 <!-- state: current -->
 ## Current behavior
@@ -23,6 +23,12 @@
   完成/关闭（如 `plan.done`）后以空列表清空 dock，避免旧条目残留（2026-08-22
   修复，提交 `0a15891`；此前仅 `todos.length > 0` 时写，plan.done 后 tasks 为空
   导致 dock 残留）。
+- 跨 turn 恢复：DSH 在 `turn/start` 清空 todo 展示投影后，adapter 的 `agent/pre-step`
+  仅在新 turn 首步调用私有只读 `context --host dsh`，按当前绑定计划重建 todo。`process.active`、
+  `process.wait`、`process.discussing` 都保留；所有 `end.*` 或明确无绑定写空列表。切换 subplan/
+  返回父 plan 依据 context 返回的当前绑定快照，而非维护私有计划栈。读取失败、超时或取消时不写
+  空列表、不阻断模型执行；首步之外不重复读取。该恢复不调用 `plan.resume`，不改 prompt/Goal/plan，
+  不新增模型工具调用或消息；允许 turn 清空后到恢复前短暂空白。
 - Fail-open：todo sync 的任何异常都不能破坏已落定的 mutation；`exec.agent` 缺失或
   session 无 append 时静默跳过，GUI 进度条不更新但 mutation 不受影响。
 - CLI 不输出独立 todo payload：`update_plan` hostAction 携带完整 plan 投影（完整数组合同由
@@ -39,6 +45,16 @@
 
 2026-08-22 信号修复（`0a15891`）补充空列表清空语义：`plan.done` 后任务列表为空时
 同样写 `todo/write`，todo dock 无残留条目（verify-finalizer 验证）。
+
+<!-- state: history -->
+<!-- dated: 2026-11-13 -->
+### Cross-turn recovery verification and deployment state
+
+跨 turn 恢复修复的来源计划记录：`@veewo/dsh-claw-kit` adapter 全套 npm 测试通过，
+新增 15 个真实 adapter 入口回归；另以 DSH 0.2.2-rc.1 的真实 Session、agentEvents 与原生
+todos 投影验证首步恢复、子/父计划来源切换及 `end.leave` 清理，记录中观察到无新增模型消息或
+工具调用。此为源码与该探针版本的验证，不代表当前安装已更新：来源计划记载安装仍为
+0.2.71-rc.1，未打包/安装/发布或热改，需后续更新并重载 adapter 才会在 GUI 生效。
 
 ## Related code
 

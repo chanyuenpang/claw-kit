@@ -1,4 +1,4 @@
-﻿# ADR: DSH adapter drives the native todo dock from the update_plan projection
+# ADR: DSH adapter drives the native todo dock from the update_plan projection
 
 ## Status
 
@@ -20,6 +20,11 @@ after rc.5`）确认 adapter 已把 plan 任务映射为 DSH 原生 todo dock �
   数据源是 `update_plan` hostAction 的完整 plan 投影，缺失时回退 compact `tasks`。
 - 经 `exec.agent.session.append("todo/write", { todos })` 整表替换、last-write-wins，
   与模型侧 `todo_write` 工具同一 seam；fail-open，进度同步不破坏已落定 mutation。
+- 兼容 DSH `turn/start` 清空原生 todo 的生命周期：adapter 在新 turn 首个 `agent/pre-step`
+  中私下只读调用 `context --host dsh`，从当前绑定 plan 恢复 todo；不调用 `plan.resume`，不修改
+  prompt/Goal/plan，也不新增模型工具或消息。等待与讨论状态照常投影，所有 `end.*` 或明确无绑定
+  写空列表；读取失败、超时或取消时 fail-open，不把未知读取结果当作无计划。实现锚点为
+  `packages/dsh-adapter/src/index.ts` 的恢复 hook。
 - 不做 CLI 改动：`update_plan` 已携带完整 plan 数组（`codex-workflow-guidance-consumption.md`
   合同），CLI 不输出独立 todo payload。
 - 不恢复 Apps SDK widget / app / render 路线：todo dock 是宿主原生 seam，不是自定义
@@ -45,7 +50,7 @@ after rc.5`）确认 adapter 已把 plan 任务映射为 DSH 原生 todo dock �
 
 ## Related Code
 
-- `packages/dsh-adapter/src/index.ts`（todo sync）
+- `packages/dsh-adapter/src/index.ts`（todo sync 与 `agent/pre-step` 新 turn 恢复）
 - `.claw/truth/features/dsh-todo-dock-integration.md`（Truth owner）
 - `codex-workflow-guidance-consumption.md`（`update_plan` 完整投影合同）
 - `abandon-apps-sdk-widget-route.md`（Apps SDK 路线放弃决策）
