@@ -99,9 +99,12 @@ for (const backend of ["native"]) test(`claw_run ${backend} delegation owns iden
       assert.equal(actor, parent); assert.ok(actors.has(id)); messages.push({ id, content });
       return "native-receipt-" + messages.length;
     },
-    // DSH listChildren returns its raw durable catalog without the tool view's kind tag.
-    listChildren: async () => members.map(({ id, label, mode, createdAt }) => ({ id, label, mode, createdAt })),
+    // DSH 0.2.2-rc.2 exposes `listDescendants(rootId)`, not rc.1's `listChildren`.
+    // Each row carries its direct `parentId` and `depth`; children of this parent are depth 1.
+    listDescendants: async (rootId) => members.map(({ id, label, mode, createdAt }) => ({ id, label, mode, createdAt, parentId: rootId, depth: 1 })),
     getProvider: () => ({ name: "spawn", inheritsParentContext: false, start() {}, prepareContinuable() {}, capabilities: { agentOptions: true } }) };
+  // A service with only the rc.1 helper must not be required: rc.2 has no listChildren.
+  assert.equal(native.listChildren, undefined);
   const services = { subprocess, agentTeams: teams, subagents: native, agents: { get: id => actors.get(id) },
     tools: { register: definition => { if (definition.name === "claw_run") tool = definition; }, get: () => undefined },
     systemPrompt: { context() {}, section() {} } };

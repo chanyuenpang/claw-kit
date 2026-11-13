@@ -130,14 +130,32 @@ export class RoleDelegation {
         // The admitted backend and actor remain fixed in the receipt. Acquire its current
         // owner method at the call site; optional catalog/options drift is not authorization.
     }
+    /**
+     * Direct children from the rc.2 catalog. The service exposes
+     * `listDescendants(rootSessionId)` rather than rc.1's `listChildren(parentId)`,
+     * so read the tree once and keep the rows whose direct parent is this one.
+     */
     async nativeCatalog(native, parentId) {
         for (let attempt = 0; attempt < 2; attempt++) {
             try {
-                const rows = await native.listChildren(parentId);
-                if (Array.isArray(rows))
-                    return rows;
+                if (typeof native?.listDescendants === "function") {
+                    const rows = await native.listDescendants(parentId);
+                    if (Array.isArray(rows))
+                        return rows.filter((row) => row?.parentId === parentId);
+                    continue;
+                }
+                // Compatibility for a service that still exposes the rc.1 helper.
+                if (typeof native?.listChildren === "function") {
+                    const rows = await native.listChildren(parentId);
+                    if (Array.isArray(rows))
+                        return rows;
+                }
+                reject("DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
             }
-            catch { /* one immediate read retry; no mutation has occurred */ }
+            catch (error) {
+                if (error instanceof DelegationError)
+                    throw error; /* one immediate read retry */
+            }
         }
         reject("DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
     }
@@ -350,8 +368,6 @@ export class RoleDelegation {
         await this.fresh(parent, r);
         let native = this.deps.getService("subagents");
         if (r.backend === "native-one-shot") {
-            if (typeof native?.listChildren !== "function")
-                reject("DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
             await this.update(parent, r.workdir, r.id, (v) => ({ ...v, delivery: "attempted" }));
             await this.fresh(parent, r);
             native = this.deps.getService("subagents");
@@ -369,8 +385,6 @@ export class RoleDelegation {
             }
             return;
         }
-        if (typeof native?.listChildren !== "function")
-            reject("DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
         const id = nativeRoleId(parent.id, r.fingerprint);
         let rows = await this.nativeCatalog(native, parent.id);
         if (this.targetDiagnostic(rows, id))

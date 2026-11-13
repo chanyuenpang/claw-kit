@@ -51,6 +51,11 @@ export declare class RoleDelegation {
     private notify;
     private capability;
     private fresh;
+    /**
+     * Direct children from the rc.2 catalog. The service exposes
+     * `listDescendants(rootSessionId)` rather than rc.1's `listChildren(parentId)`,
+     * so read the tree once and keep the rows whose direct parent is this one.
+     */
     private nativeCatalog;
     private targetDiagnostic;
     start(actor: DelegationActor, workdir: string, callId: string, raw: unknown): Promise<Json>;
