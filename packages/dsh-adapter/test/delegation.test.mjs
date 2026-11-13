@@ -45,7 +45,9 @@ class MemoryReceipts {
 }
 const params = (...names) => Object.fromEntries(names.map((name) => [name, { type: "string" }]));
 
-async function fixture(t, backend = "team") {
+// DSH 0.2.2-rc.2 removed Team member creation/messaging: every role runs on
+// the native subagents family, so "continuable" is the default carrier.
+async function fixture(t, backend = "continuable") {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-delegation-test-"));
   t.after(async () => { await fs.rm(root, { recursive: true, force: true }); });
   const workdir = path.join(root, "project"); await fs.mkdir(workdir);
@@ -67,7 +69,7 @@ async function fixture(t, backend = "team") {
   const child = (id) => { const actor = { id, options: parent.options, session: { header: { cwd: workdir, parentSession: parent.id } } }; actors.set(id, actor); return actor; };
   const provider = { name: "spawn", inheritsParentContext: false, capabilities: { agentOptions: true }, start() {}, ...(backend !== "one-shot" ? { prepareContinuable() {} } : {}) };
   const services = {
-    tools: { get(name, actor) { assert.equal(actor, parent); return backend === "team" && name === "spawn_teammate" ? { parameters: params("name", "description", "prompt") } : undefined; } },
+    tools: { get() { return undefined; } },
     subagents: {
       getProvider(name) { return name === "spawn" ? provider : undefined; },
       async listChildren(id) { outsideLock(); assert.equal(id, parent.id);
@@ -79,36 +81,26 @@ async function fixture(t, backend = "team") {
       },
       async startActivation(spec) {
         outsideLock(); assert.equal(spec.provider, "spawn"); state.starts++;
+        // rc.2 flattened activation: flat parent/prompt, explicit delivery, no nested request.
+        assert.equal(spec.request, undefined); assert.equal(spec.parent, parent); assert.equal(spec.delivery, "caller");
         if (backend !== "one-shot") {
           child(spec.childId);
           children.push({ kind: "child", id: spec.childId, label: spec.label, mode: "continuable", activity: "inactive", provider: "spawn" });
           return { childId: spec.childId, messageId: "bootstrap" };
         }
-        const request = spec.request;
         const actor = child("actual-session-" + state.starts);
         children.push({ kind: "child", id: actor.id, label: spec.label, provider: "spawn", mode: "one-shot" });
         const result = deferred(); runs.push(result);
-        await state.onStart?.(actor, request.prompt[0].text);
+        await state.onStart?.(actor, spec.prompt[0].text);
         return { childId: actor.id, result: result.promise, dispose() {} };
       },
     },
+    // rc.2 TeamService is a shared task board only: member calls are defects.
     agentTeams: {
-      tryMembership(actor) { return actor === parent ? { id: parent.id, root: parent, role: "lead" } : members.some((m) => m.id === actor.id) ? { id: parent.id, root: parent, role: "teammate" } : undefined; },
-      listMembers(actor) { outsideLock(); assert.equal(actor, parent);
-        if (state.failRosterReads-- > 0) throw new Error("transient roster read");
-        return copy(members); },
-      async spawnTeammate(actor, request) {
-        outsideLock(); assert.equal(actor, parent); state.starts++;
-        const member = { id: "team-child-" + state.starts, name: request.name, description: request.description, role: "teammate", status: "inactive", provider: request.provider, context: request.context, diagnostics: [] };
-        members.push(member); child(member.id);
-        return { member: state.projectSpawn ? { target: member.name, role: member.role, status: member.status } : copy(member) };
-      },
-      async sendMessage(actor, request) {
-        outsideLock(); assert.equal(actor, parent); state.sends++; state.messages.push(request.content[0].text);
-        const target = members.find((m) => m.name === request.target);
-        await state.onSend?.(actors.get(target.id), request.content[0].text);
-        return { messageId: "team-message-" + state.sends, status: "queued" };
-      },
+      tryMembership() { assert.fail("rc.2 agentTeams has no member roster"); },
+      listMembers() { assert.fail("rc.2 agentTeams has no member roster"); },
+      async spawnTeammate() { assert.fail("rc.2 agentTeams cannot create members"); },
+      async sendMessage() { assert.fail("rc.2 agentTeams cannot message members"); },
     },
   };
   const dependencies = {
@@ -218,29 +210,6 @@ test("architect without active workflow returns reply or rejects explicit report
   assert.equal((await f.api.start(f.parent, f.workdir, "reply", { role: "feature-architect", brief: "q" })).output, "reply");
 });
 
-test("Team role reuse tolerates description, provider, context and diagnostic drift", async (t) => {
-  const f = await fixture(t);
-  const first = await f.api.start(f.parent, f.workdir, "team-a", { role: "researcher", brief: "q" });
-  await finish(f, first.assignment_id);
-  Object.assign(f.members[0], { description: "old soft fingerprint", provider: "other-view", context: "fork",
-    diagnostics: [{ reason: "display-warning" }], status: "inactive" });
-  const second = await f.api.start(f.parent, f.workdir, "team-b", { role: "researcher", brief: "q2" });
-  assert.equal(second.status, "running");
-  assert.equal(second.model_selection.reason, "reuse-existing");
-  assert.equal(f.state.starts, 1);
-  assert.equal(f.state.sends, 2);
-});
-
-test("Team spawn projection and one transient roster failure recover from the roster", async (t) => {
-  const f = await fixture(t);
-  f.state.projectSpawn = true;
-  f.state.failRosterReads = 1;
-  const result = await f.api.start(f.parent, f.workdir, "projected", { role: "researcher", brief: "q" });
-  assert.equal(result.status, "running");
-  assert.equal(f.state.starts, 1);
-  assert.equal(f.state.sends, 1);
-});
-
 test("native catalog tolerates one read failure and unrelated diagnostics", async (t) => {
   const f = await fixture(t, "continuable");
   f.state.failCatalogReads = 1;
@@ -316,7 +285,7 @@ test("receipt store survives facade reconstruction without replaying SDK effects
   api = new RoleDelegation({ ...f.dependencies, receipts: new DelegationReceiptStore(root) });
   const duplicate = await api.start(f.parent, f.workdir, "persistent", { role: "researcher", brief: "q" });
   assert.equal(duplicate.assignment_id, a.assignment_id); assert.equal(f.state.starts, 1); assert.equal(f.state.sends, 1);
-  const actor = f.actors.get(f.members[0].id);
+  const actor = f.actors.get(f.children[0].id);
   await api.complete(actor, f.workdir, { assignment_id: a.assignment_id, status: "completed", result: "durable result" });
   assert.equal((await api.result(f.parent, f.workdir, { assignment_id: a.assignment_id, wait_ms: 0 })).result, "durable result");
 });

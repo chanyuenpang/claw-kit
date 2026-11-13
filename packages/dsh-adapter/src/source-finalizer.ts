@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { serializeFailure } from "../lib/errors.js";
-import { startNativeActivation } from "./native-start.js";
+import { nativeActivationSpec, startNativeActivation } from "./native-start.js";
 import type { ModelSelectionAgent } from "./model-selection.js";
 import type { RoleSelection } from "../lib/role-preferences.js";
 
@@ -48,11 +48,12 @@ export function createSourceFinalizerDispatcher(input: {
         catch (error) { logWarning = serializeFailure(error, { fallbackCode: "DELIVERY_LOG_UNAVAILABLE" }).code; }
       };
       try {
-        const child = await startNativeActivation(input.getService("subagents"), {
-          provider: "spawn", label: "knowledge-source-" + task.dispatchId, signal: new AbortController().signal,
-          request: { parent: agent, prompt: [{ type: "text", text: task.prompt ?? "" }],
+        // rc.2 requires a flat request with explicit delivery; "caller" keeps the
+        // background writer result with the adapter instead of the parent model.
+        const child = await startNativeActivation(input.getService("subagents"), nativeActivationSpec(
+          { parent: agent, prompt: [{ type: "text", text: task.prompt ?? "" }],
             ...(selection?.applied?.options && Object.keys(selection.applied.options).length ? { agentOptions: selection.applied.options } : {}) },
-        });
+          { provider: "spawn", label: "knowledge-source-" + task.dispatchId, signal: new AbortController().signal, delivery: "caller" }));
         record({ delivery: "accepted", ...(child.childId ? { runId: child.childId } : {}) });
         if (child.result) void Promise.resolve(child.result).catch(() => undefined).finally(() => child.dispose?.()).catch(() => undefined);
         return { ok: true, delivery: "accepted", executor: "native-one-shot", ...(child.childId ? { runId: child.childId } : {}),

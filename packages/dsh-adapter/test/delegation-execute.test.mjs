@@ -9,7 +9,9 @@ import { buildHostPluginArtifact } from "../../../scripts/host-plugin-artifacts.
 
 // Real installed layout + actual adapter entry. Only Host services/CLI transport
 // are controlled fixtures; no live Team, profile, runtime or canonical plan writes.
-for (const backend of ["team", "native"]) test(`claw_run ${backend} delegation owns identity, report registration and role reuse`, async t => {
+// DSH 0.2.2-rc.2 removed Team member creation/messaging, so only the native
+// subagents family remains as a role carrier.
+for (const backend of ["native"]) test(`claw_run ${backend} delegation owns identity, report registration and role reuse`, async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-role-entry-"));
   const oldHome = process.env.HOME, oldProfile = process.env.USERPROFILE, oldPath = process.env.PATH;
   process.env.HOME = path.join(root, "home"); process.env.USERPROFILE = process.env.HOME;
@@ -73,23 +75,22 @@ for (const backend of ["team", "native"]) test(`claw_run ${backend} delegation o
     return handle;
   } };
   const teams = {
-    tryMembership: actor => backend !== "team" ? undefined : actor === parent ? { root: parent, id: parent.id, role: "lead" }
-      : actors.get(actor.id) === actor ? { root: parent, id: parent.id, role: "teammate" } : undefined,
-    listMembers: () => members,
-    async spawnTeammate(actor, request) {
-      assert.equal(actor, parent);
-      const member = { id: "member-" + request.name, name: request.name, role: "teammate", description: request.description,
-        provider: request.provider, context: request.context, status: "inactive", diagnostics: [] };
-      members.push(member);
-      actors.set(member.id, { id: member.id, options: parent.options, session: { header: { cwd: project, parentSession: parent.id } } });
-      return { member };
-    },
-    async sendMessage(actor, request) { assert.equal(actor, parent); messages.push(request); return { messageId: "receipt-" + messages.length, status: "queued" }; },
+    // rc.2 TeamService is a task board only; any member call here is a defect.
+    tryMembership() { assert.fail("rc.2 agentTeams has no member roster"); },
+    listMembers() { assert.fail("rc.2 agentTeams has no member roster"); },
+    async spawnTeammate() { assert.fail("rc.2 agentTeams cannot create members"); },
+    async sendMessage() { assert.fail("rc.2 agentTeams cannot message members"); },
   };
   const native = {
     async startActivation(spec) {
-      assert.notEqual(backend, "team"); assert.equal(spec.request.parent, parent);
-      const name = spec.label.includes(":feature-architect:") ? "claw-feature-architect" : "claw-researcher";
+      // rc.2 flattened request: parent/prompt/agentOptions are top-level and
+      // delivery+signal are required; no nested `request` object may survive.
+      assert.equal(backend, "native"); assert.equal(spec.request, undefined);
+      assert.equal(spec.parent, parent);
+      assert.equal(spec.delivery, "caller");
+      assert.ok(spec.signal instanceof AbortSignal);
+      assert.ok(Array.isArray(spec.prompt) && spec.prompt[0]?.type === "text");
+      const name = spec.name ?? (spec.label.includes(":feature-architect:") ? "claw-feature-architect" : "claw-researcher");
       members.push({ id: spec.childId, name, label: spec.label, mode: "continuable", createdAt: 1 });
       actors.set(spec.childId, { id: spec.childId, options: parent.options, session: { header: { cwd: project, parentSession: parent.id } } });
       return { childId: spec.childId, messageId: "bootstrap" };
@@ -102,8 +103,7 @@ for (const backend of ["team", "native"]) test(`claw_run ${backend} delegation o
     listChildren: async () => members.map(({ id, label, mode, createdAt }) => ({ id, label, mode, createdAt })),
     getProvider: () => ({ name: "spawn", inheritsParentContext: false, start() {}, prepareContinuable() {}, capabilities: { agentOptions: true } }) };
   const services = { subprocess, agentTeams: teams, subagents: native, agents: { get: id => actors.get(id) },
-    tools: { register: definition => { if (definition.name === "claw_run") tool = definition; }, get: (name, actor) => backend === "team" && name === "spawn_teammate" && actor === parent
-      ? { parameters: { name: { type: "string" }, description: { type: "string" }, prompt: { type: "string" } } } : undefined },
+    tools: { register: definition => { if (definition.name === "claw_run") tool = definition; }, get: () => undefined },
     systemPrompt: { context() {}, section() {} } };
   apply({ get: name => services[name], on: (name, callback) => { if (name === "dispose") dispose = callback; } });
   const invoke = (operation, args, actor = parent, callId = "caller") => tool.execute({ operation, args }, { agent: actor, callId });
@@ -138,7 +138,7 @@ for (const backend of ["team", "native"]) test(`claw_run ${backend} delegation o
   assert.equal((await invoke("delegate.result", { assignment_id: next.assignment_id, wait_ms: 0 })).result, "B answered");
   const architecture = await invoke("delegate.start", { role: "feature-architect", brief: "Design bounded routing", output: "auto" }, parent, "architecture-A");
   assert.equal(architecture.status, "running");
-  const author = actors.get(members.find(m => m.name === "claw-feature-architect").id);
+  const author = actors.get(members.find(m => m.label.includes(":feature-architect:")).id);
   const store = new DelegationReceiptStore();
   const receipt = await store.withParent(parent.id, project, tx => tx.get(architecture.assignment_id));
   assert.ok(receipt.skillPath.startsWith(artifact.toLowerCase()) || receipt.skillPath.startsWith(artifact));

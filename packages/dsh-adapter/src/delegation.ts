@@ -1,6 +1,6 @@
 import { serializeFailure, type SafeFailure } from "../lib/errors.js";
 import { createHash } from "node:crypto";
-import { startNativeActivation } from "./native-start.js";
+import { nativeActivationSpec, nativeChildName, startNativeActivation } from "./native-start.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,7 +24,9 @@ export type RoleDelegationDependencies = {
   signal?: AbortSignal;
 };
 type Role = "researcher" | "feature-architect";
+/** `team` remains readable for receipts admitted before DSH removed its member APIs. */
 type Backend = "team" | "native-continuable" | "native-one-shot";
+type NewBackend = Exclude<Backend, "team">;
 type Receipt = {
   version: 1; id: string; parentId: string; workdir: string; callId: string; requestHash: string;
   role: Role; brief: string; output: "reply" | "report"; skillPath: string; fingerprint: string;
@@ -138,13 +140,6 @@ export class RoleDelegation {
     // The admitted backend and actor remain fixed in the receipt. Acquire its current
     // owner method at the call site; optional catalog/options drift is not authorization.
   }
-  private async teamRoster(team: any, parent: DelegationActor): Promise<any[]> {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try { const rows = await team.listMembers(parent); if (Array.isArray(rows)) return rows; }
-      catch { /* one immediate read retry; no mutation has occurred */ }
-    }
-    reject("DELEGATE_TEAM_ROSTER_UNAVAILABLE");
-  }
   private async nativeCatalog(native: any, parentId: string): Promise<any[]> {
     for (let attempt = 0; attempt < 2; attempt++) {
       try { const rows = await native.listChildren(parentId); if (Array.isArray(rows)) return rows; }
@@ -190,9 +185,9 @@ export class RoleDelegation {
       try {
         if (!(await fs.stat(skillPath)).isFile() || normalize(await fs.realpath(skillPath)) !== normalize(skillPath)) reject("DELEGATE_SKILL_RESOURCE_INVALID");
       } catch { reject("DELEGATE_SKILL_RESOURCE_UNAVAILABLE"); }
-      const backend: Backend = capability.selectedRoute === "team" ? "team" : capability.reusable ? "native-continuable" : "native-one-shot";
+      const backend: NewBackend = capability.reusable ? "native-continuable" : "native-one-shot";
       const modelSelection = await selectDshRoleModel({ agent: parent, role,
-        supportsOptions: backend !== "team" && capability.supportsOptions === true,
+        supportsOptions: capability.supportsOptions === true,
         getService: this.deps.getService });
       // Long-lived role identity must not churn with best-effort model hints.
       const fingerprint = hash([parent.id, workdir, role, "spawn", backend]);
@@ -207,7 +202,7 @@ export class RoleDelegation {
         report = { planPath: capturedPlan, taskDir, reportDir, reportPath: path.join(reportDir, stamp + "-" + summary + "-" + id + ".md") };
       }
       const initial: Receipt = { version: 1, id, parentId: parent.id, workdir, callId, requestHash, role, brief, output, skillPath, fingerprint, backend, modelSelection,
-        ...(capability.teamId ? { teamId: capability.teamId } : {}), label: backend === "native-one-shot" ? "claw-kit:delegate-once:" + id : "claw-kit:delegate:" + role + ":" + fingerprint,
+        label: backend === "native-one-shot" ? "claw-kit:delegate-once:" + id : "claw-kit:delegate:" + role + ":" + fingerprint,
         status: "pending", delivery: "reserved", ordinal: 1, admitted: false, ...report };
       const reserved = await this.receipts().withParent(parent.id, workdir, async (tx: DelegationReceiptTransaction) => {
         const existing = await tx.get(id);
@@ -308,6 +303,9 @@ export class RoleDelegation {
       "Role-level ready/answered/unresolved is content inside result, not the completion status. The adapter owns parent notification and plan-reference registration; do not send a separate peer message or manage Team tasks. End after completion.";
   }
   private async dispatch(parent: DelegationActor, r: Receipt): Promise<void> {
+    // Receipts admitted before DSH 0.2.2-rc.2 may still say "team"; that carrier
+    // no longer owns member creation or messaging, so resume on subagents.
+    if (r.backend === "team") reject("DELEGATE_TEAM_BACKEND_REMOVED");
     await this.fresh(parent, r);
     let native = this.deps.getService("subagents") as any;
     if (r.backend === "native-one-shot") {
@@ -316,8 +314,10 @@ export class RoleDelegation {
       await this.fresh(parent, r);
       native = this.deps.getService("subagents") as any;
       const options = r.modelSelection?.applied.options ?? {};
-      const run = await startNativeActivation(native, { provider: "spawn", label: r.label, signal: this.signal, request: { parent, prompt: text(this.prompt(r)),
-        ...(Object.keys(options).length ? { agentOptions: options } : {}) } });
+      // "caller" delivery keeps the result adapter-owned instead of notifying the model.
+      const run = await startNativeActivation(native, nativeActivationSpec(
+        { parent, prompt: text(this.prompt(r)), ...(Object.keys(options).length ? { agentOptions: options } : {}) },
+        { provider: "spawn", label: r.label, signal: this.signal, delivery: "caller" }));
       await this.update(parent, r.workdir, r.id, (v) => ({ ...v, delivery: "accepted", ...(string(run?.childId) ? { runId: run.childId } : {}), status: terminal(v) ? v.status : "running" }));
       if (run?.result && typeof run.result.then === "function") {
         const settled = async () => {
@@ -329,97 +329,63 @@ export class RoleDelegation {
       }
       return;
     }
-    let memberId: string;
-    let memberName: string | undefined;
-    if (r.backend === "team") {
-      let team = this.deps.getService("agentTeams") as any;
-      const name = "claw-" + r.role;
-      let rows = await this.teamRoster(team, parent);
-      let matches = rows.filter((m: any) => m.name === name);
-      if (matches.length > 1) reject("DELEGATE_ROLE_AMBIGUOUS");
-      let member = matches[0];
-      if (member && (!string(member.id) || member.role !== "teammate" || member.status === "failed")) reject("DELEGATE_ROLE_INCOMPATIBLE");
-      if (member) {
-        await this.update(parent, r.workdir, r.id, (v) => ({ ...v,
-          ...(v.modelSelection ? { modelSelection: reuseExistingRoleSelection(v.modelSelection) } : {}) }));
-      } else {
-        // Team creation may commit before its reply is projected. Mark the
-        // attempt, then recover once from the authoritative roster.
-        await this.update(parent, r.workdir, r.id, (v) => ({ ...v, memberAttempted: true }));
-        await this.fresh(parent, r);
-        team = this.deps.getService("agentTeams") as any;
-        let startFailure: unknown;
-        try {
-          member = (await team.spawnTeammate(parent, { name, description: r.label, prompt: text(this.bootstrap(r)), context: "fresh", provider: "spawn", signal: this.signal }))?.member;
-        } catch (error) { startFailure = error; member = undefined; }
-        if (!string(member?.id) || member.name !== name) {
-          try { rows = await this.teamRoster(team, parent); }
-          catch (diagnostic) {
-            if (!startFailure) throw diagnostic;
-            const primary = serializeFailure(startFailure, { fallbackCode: "DELEGATE_MEMBER_START_FAILED", operation: "team.member.start", origin: "host" });
-            throw Object.assign(new Error(primary.message), { ...primary, diagnostics: [serializeFailure(diagnostic, { fallbackCode: "DELEGATE_CATALOG_FAILED", operation: "team.catalog.read" })] });
-          }
-          matches = rows.filter((m: any) => m.name === name);
-          if (matches.length > 1) reject("DELEGATE_ROLE_AMBIGUOUS");
-          member = matches[0];
-          if (!member && startFailure) { const primary = serializeFailure(startFailure, { fallbackCode: "DELEGATE_MEMBER_START_FAILED", operation: "team.member.start", origin: "host" }); throw Object.assign(new Error(primary.message), primary); }
-        }
-      }
-      if (!string(member?.id) || member.name !== name || member.role !== "teammate" || member.status === "failed") reject("DELEGATE_MEMBER_CREATION_UNCERTAIN");
-      memberId = member.id; memberName = member.name;
+    if (typeof native?.listChildren !== "function") reject("DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
+    const id = nativeRoleId(parent.id, r.fingerprint);
+    let rows = await this.nativeCatalog(native, parent.id);
+    if (this.targetDiagnostic(rows, id)) reject("DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
+    let matches = this.roleRows(rows, id, r.label);
+    if (matches.length > 1) reject("DELEGATE_ROLE_AMBIGUOUS");
+    let member = matches[0];
+    if (member && !this.reusableMember(member, id, r.label)) reject("DELEGATE_ROLE_INCOMPATIBLE");
+    if (member) {
+      await this.update(parent, r.workdir, r.id, (v) => ({ ...v,
+        ...(v.modelSelection ? { modelSelection: reuseExistingRoleSelection(v.modelSelection) } : {}) }));
     } else {
-      if (typeof native?.listChildren !== "function") reject("DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
-      const id = nativeRoleId(parent.id, r.fingerprint);
-      let rows = await this.nativeCatalog(native, parent.id);
+      await this.fresh(parent, r);
+      native = this.deps.getService("subagents") as any;
+      rows = await this.nativeCatalog(native, parent.id);
       if (this.targetDiagnostic(rows, id)) reject("DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
-      let matches = rows.filter((m: any) => (m.kind === undefined || m.kind === "child") && (m.id === id || m.label === r.label));
+      matches = this.roleRows(rows, id, r.label);
       if (matches.length > 1) reject("DELEGATE_ROLE_AMBIGUOUS");
-      let member = matches[0];
-      if (member && (member.id !== id || member.label !== r.label || member.mode !== "continuable")) reject("DELEGATE_ROLE_INCOMPATIBLE");
-      if (member) {
-        await this.update(parent, r.workdir, r.id, (v) => ({ ...v,
-          ...(v.modelSelection ? { modelSelection: reuseExistingRoleSelection(v.modelSelection) } : {}) }));
-      } else {
-        await this.fresh(parent, r);
-        native = this.deps.getService("subagents") as any;
-        rows = await this.nativeCatalog(native, parent.id);
-        if (this.targetDiagnostic(rows, id)) reject("DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
-        matches = rows.filter((m: any) => (m.kind === undefined || m.kind === "child") && (m.id === id || m.label === r.label));
-        if (matches.length > 1) reject("DELEGATE_ROLE_AMBIGUOUS");
-        member = matches[0];
-        if (member && (member.id !== id || member.label !== r.label || member.mode !== "continuable")) reject("DELEGATE_ROLE_INCOMPATIBLE");
-        if (!member) {
-          const options = r.modelSelection?.applied.options ?? {};
-          await this.update(parent, r.workdir, r.id, (v) => ({ ...v, memberAttempted: true }));
-          try {
-            const created = await startNativeActivation(native, { childId: id, provider: "spawn", label: r.label,
-              request: { parent, prompt: text(this.bootstrap(r)), ...(Object.keys(options).length ? { agentOptions: options } : {}) }, signal: this.signal });
-            if (created?.childId !== id) {
-              await this.update(parent, r.workdir, r.id, (v) => ({ ...v, memberAttempted: true }));
-              reject("DELEGATE_MEMBER_CREATION_UNCERTAIN");
-            }
-          } catch (error) {
-            if (error instanceof DelegationError) throw error;
-            const primary = serializeFailure(error, { fallbackCode: "DELEGATE_MEMBER_START_FAILED", operation: "native.member.start", origin: "host" });
-            try { rows = await this.nativeCatalog(this.deps.getService("subagents"), parent.id); }
-            catch (diagnostic) { throw Object.assign(new Error(primary.message), { ...primary, diagnostics: [serializeFailure(diagnostic, { fallbackCode: "DELEGATE_CATALOG_FAILED", operation: "native.catalog.read" })] }); }
-            const recovered = rows.filter((m: any) => (m.kind === undefined || m.kind === "child") && m.id === id && m.label === r.label && m.mode === "continuable");
-            if (recovered.length !== 1) throw Object.assign(new Error(primary.message), primary);
+      member = matches[0];
+      if (member && !this.reusableMember(member, id, r.label)) reject("DELEGATE_ROLE_INCOMPATIBLE");
+      if (!member) {
+        const options = r.modelSelection?.applied.options ?? {};
+        await this.update(parent, r.workdir, r.id, (v) => ({ ...v, memberAttempted: true }));
+        try {
+          const created = await startNativeActivation(native, nativeActivationSpec(
+            { parent, prompt: text(this.bootstrap(r)), childId: id, name: nativeChildName(r.label),
+              ...(Object.keys(options).length ? { agentOptions: options } : {}) },
+            { provider: "spawn", label: r.label, signal: this.signal, delivery: "caller" }));
+          if (created?.childId !== id) {
+            await this.update(parent, r.workdir, r.id, (v) => ({ ...v, memberAttempted: true }));
+            reject("DELEGATE_MEMBER_CREATION_UNCERTAIN");
           }
+        } catch (error) {
+          if (error instanceof DelegationError) throw error;
+          const primary = serializeFailure(error, { fallbackCode: "DELEGATE_MEMBER_START_FAILED", operation: "native.member.start", origin: "host" });
+          try { rows = await this.nativeCatalog(this.deps.getService("subagents"), parent.id); }
+          catch (diagnostic) { throw Object.assign(new Error(primary.message), { ...primary, diagnostics: [serializeFailure(diagnostic, { fallbackCode: "DELEGATE_CATALOG_FAILED", operation: "native.catalog.read" })] }); }
+          const recovered = this.roleRows(rows, id, r.label).filter((row: any) => this.reusableMember(row, id, r.label));
+          if (recovered.length !== 1) throw Object.assign(new Error(primary.message), primary);
         }
       }
-      memberId = id;
     }
     await this.fresh(parent, r);
-    const deliveryService = this.deps.getService(r.backend === "team" ? "agentTeams" : "subagents") as any;
-    await this.update(parent, r.workdir, r.id, (v) => ({ ...v, memberId, ...(memberName ? { memberName } : {}), delivery: "attempted" }));
-    const receipt = r.backend === "team"
-      ? (await deliveryService.sendMessage(parent, { target: memberName, content: text(this.prompt(r)), signal: this.signal }))?.messageId
-      : await deliveryService.sendMessage(parent, memberId, text(this.prompt(r)), { signal: this.signal });
+    const deliveryService = this.deps.getService("subagents") as any;
+    await this.update(parent, r.workdir, r.id, (v) => ({ ...v, memberId: id, delivery: "attempted" }));
+    const receipt = await deliveryService.sendMessage(parent, id, text(this.prompt(r)), { signal: this.signal });
     if (!string(receipt)) reject("DELEGATE_DELIVERY_UNCERTAIN");
     try { await this.update(parent, r.workdir, r.id, (v) => ({ ...v, messageId: receipt, delivery: "accepted", status: terminal(v) ? v.status : "running" })); }
     catch (error) { const primary = serializeFailure(error, { fallbackCode: "DELEGATE_RECEIPT_PERSIST_FAILED", operation: "delegate.delivery.persist", origin: "dsh" });
       throw Object.assign(new Error(primary.message), { ...primary, deliveryAccepted: true, acceptedReceiptId: receipt }); }
+  }
+  /** rc.2 catalog rows carry the durable id/label and a mode; diagnostics are filtered by id only. */
+  private roleRows(rows: any[], id: string, label: string): any[] {
+    return rows.filter((row) => (row?.kind === undefined || row.kind === "child") && (row.id === id || row.label === label));
+  }
+  private reusableMember(row: any, id: string, label: string): boolean {
+    return row?.id === id && row.label === label && row.mode === "continuable";
   }
   private async proveWorker(actor: DelegationActor, r: Receipt): Promise<void> {
     if (r.delivery === "reserved") reject("DELEGATE_NOT_DELIVERED");

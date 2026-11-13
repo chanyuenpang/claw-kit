@@ -3,7 +3,7 @@
 <!-- state: current -->
 ## Current behavior
 
-DSH is a first-class claw invocation host. For newly completed project plans with capture enabled, Core emits a versioned source-plan handoff containing the originating session key, complete plan path/title, project root, and writer preferences. DSH adapter dispatches that handoff to its native worker route. This source route does not create a claimable knowledge job and does not require claim, token, authenticated receipt, or a separate knowledge.done transition; ordinary non-capturing plan/subplan completion is the writer's completion boundary.
+DSH is a first-class claw invocation host. For newly completed project plans with capture enabled, Core emits a versioned source-plan handoff containing the originating session key, complete plan path/title, project root, and writer preferences. DSH adapter dispatches that handoff to its `subagents` worker route. Since DSH 0.2.2-rc.2 the launch uses the flattened activation request (top-level `parent`/`prompt`/`agentOptions`) with explicit `delivery: "caller"` and a signal; `agentTeams` owns no member or message operation. This source route does not create a claimable knowledge job and does not require claim, token, authenticated receipt, or a separate knowledge.done transition; ordinary non-capturing plan/subplan completion is the writer's completion boundary.
 
 The writer calls the native `claw_run` `knowledge.materials` operation with the source session key and source plan path. Core reads the complete source plan and creates disposable ordinary writer templates; DSH reads originating-session history through its host API and writes available ordinary user/assistant text to the material report. Extraction excludes non-text/tool/reasoning records, applies source-plan time bounds and nearest preceding user context, and deduplicates message IDs. Unavailable history is reported as unavailable, not represented as an empty transcript. Source plan is read-only evidence. The writer follows ordinary workflow guidance, including an auxiliary plan with knowledge capture disabled and its governance subplan.
 
@@ -31,6 +31,11 @@ Focused regression coverage includes `packages/dsh-adapter/test/finalizer-execut
 
 <!-- state: history -->
 ## Evolution history
+
+<!-- dated: 2026-11-13 -->
+### rc.2 launch shape and carrier
+
+`startActivation` no longer accepts a nested `request`; it takes flat `parent`/`prompt`/`agentOptions` plus required `delivery` and `signal`. The finalizer passes `delivery: "caller"` so a background writer does not notify the parent model. Dispatch deduplication, no-resend-after-unknown and source-material boundaries are unchanged. Verified offline against the published rc.2 SDK shape; a live rc.2 profile run of a real knowledge closeout was not performed.
 
 <!-- dated: 2026-10-29 -->
 ### Source-plan handoff replaced claim protocol for DSH's new route

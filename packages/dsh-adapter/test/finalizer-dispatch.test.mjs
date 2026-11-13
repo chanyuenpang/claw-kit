@@ -46,3 +46,23 @@ test("a proven no-effect rejection permits a later explicit delivery", async t =
   assert.equal((await dispatch(f.agent, f.root, f.task)).delivery, "accepted");
   assert.equal(calls, 2);
 });
+
+// DSH 0.2.2-rc.2 requires a flat activation request with explicit delivery.
+test("knowledge dispatch sends the rc.2 flat request shape exactly once", async t => {
+  const f = fixture(t); const specs = [];
+  const dispatch = createSourceFinalizerDispatcher({
+    selectModel: async () => ({ requested: { intent: "low-cost" }, applied: { mode: "inherit", options: { model: "cheap" } } }),
+    getService: () => ({ startActivation: async spec => { specs.push(spec); return { childId: "writer-flat" }; } }),
+  });
+  assert.equal((await dispatch(f.agent, f.root, f.task)).delivery, "accepted");
+  assert.equal(specs.length, 1);
+  const [spec] = specs;
+  assert.equal(spec.request, undefined, "rc.2 rejects a nested request");
+  assert.equal(spec.parent, f.agent);
+  assert.deepEqual(spec.prompt, [{ type: "text", text: "write knowledge" }]);
+  assert.equal(spec.provider, "spawn");
+  assert.equal(spec.delivery, "caller", "a background writer must not notify the parent model");
+  assert.ok(spec.signal instanceof AbortSignal);
+  assert.ok(spec.label.startsWith("knowledge-source-"));
+  assert.deepEqual(spec.agentOptions, { model: "cheap" });
+});
