@@ -3,17 +3,44 @@ import type { ClawCommandRequest } from "./command-service.js";
 
 // Closed wire boundary. Domain validation still belongs to core; this decoder
 // validates shape and authority before any registry/focus preparation can run.
-type Check = (value: unknown) => boolean;
-const text: Check = (v) => typeof v === "string";
-const bool: Check = (v) => typeof v === "boolean";
-const id: Check = (v) => Number.isSafeInteger(v) && Number(v) > 0;
-const list = (check: Check): Check => (v) => Array.isArray(v) && v.every(check);
-const oneOf = (...values: string[]): Check => (v) => typeof v === "string" && values.includes(v);
-const object = (fields: Record<string, Check>, required: string[] = []): Check => (v) => {
-  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+type InputIssue = { field: string; reason: string; message: string };
+// Return the first actionable issue from the same check that owns acceptance.
+// Never include input values; unusual/oversized field names are not echoed.
+type Check = (value: unknown, field: string) => InputIssue | undefined;
+const fieldPath = (parent: string, key: string): string =>
+  parent + (/^[A-Za-z_$][A-Za-z0-9_$-]{0,63}$/.test(key) ? "." + key : "[unrecognized field]");
+const expect = (expected: string, accepts: (value: unknown) => boolean): Check => (v, field) =>
+  accepts(v) ? undefined : { field, reason: "invalid_value", message: "Field " + field + " must be " + expected + "." };
+const text = expect("a string", (v) => typeof v === "string");
+const bool = expect("a boolean", (v) => typeof v === "boolean");
+const id = expect("a positive safe integer", (v) => Number.isSafeInteger(v) && Number(v) > 0);
+const list = (check: Check): Check => (v, field) => {
+  if (!Array.isArray(v)) return { field, reason: "invalid_type", message: "Field " + field + " must be an array." };
+  for (let index = 0; index < v.length; index++) {
+    // Match Array.every's treatment of sparse arrays for in-process callers.
+    if (!(index in v)) continue;
+    const issue = check(v[index], field + "[" + index + "]");
+    if (issue) return issue;
+  }
+};
+const oneOf = (...values: string[]): Check => expect("one of " + values.join(", "), (v) => typeof v === "string" && values.includes(v));
+const object = (fields: Record<string, Check>, required: string[] = [], unknownHints: Record<string, string> = {}): Check => (v, field) => {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return { field, reason: "invalid_type", message: "Field " + field + " must be an object." };
   const value = v as Record<string, unknown>;
-  return required.every((key) => Object.hasOwn(value, key))
-    && Object.keys(value).every((key) => Object.hasOwn(fields, key) && fields[key]!(value[key]));
+  for (const key of required) {
+    if (!Object.hasOwn(value, key)) {
+      const missing = fieldPath(field, key);
+      return { field: missing, reason: "required", message: "Required field " + missing + " is missing." };
+    }
+  }
+  for (const key of Object.keys(value)) {
+    const child = fieldPath(field, key);
+    if (!Object.hasOwn(fields, key)) return { field: child, reason: "unknown_field",
+      message: "Unsupported field " + child + ". Allowed fields here: " + (Object.keys(fields).join(", ") || "none") + ". "
+        + (Object.hasOwn(unknownHints, key) ? unknownHints[key] : "Remove the unsupported field.") };
+    const issue = fields[key]!(value[key], child);
+    if (issue) return issue;
+  }
 };
 const fields = {
   goalText: text, requirementsSummary: text, planSummary: text, retrospectiveSummary: text,
@@ -24,7 +51,9 @@ const fields = {
   references: list(object({ path: text, why: text }, ["path", "why"])),
 };
 const taskStatus = oneOf("pending", "in_progress", "subagent_running", "done", "blocked");
-const task = object({ title: text, detail: text }, ["title"]);
+const task = object({ title: text, detail: text }, ["title"], {
+  status: "New tasks start as pending. Omit status; use task.edit or task.done for later state changes.",
+});
 const mutationChecks: Record<string, Check> = {
   "plan.update": object({ type: text, updates: object(fields) }, ["type", "updates"]),
   "plan.status": object({ type: text, status: text }, ["type", "status"]),
@@ -32,11 +61,12 @@ const mutationChecks: Record<string, Check> = {
   "task.edit": object({ type: text, id, title: text, detail: text, status: taskStatus, choiceId: text }, ["type", "id"]),
   "task.remove": object({ type: text, id }, ["type", "id"]),
 };
-const mutation: Check = (v) => {
+const mutation: Check = (v, field) => {
   const type = (v as { type?: unknown } | null)?.type;
-  return typeof type === "string" && Object.hasOwn(mutationChecks, type) && mutationChecks[type]!(v);
+  const issue = oneOf(...Object.keys(mutationChecks))(type, fieldPath(field, "type"));
+  return issue ?? mutationChecks[type as string]!(v, field);
 };
-const finalizeId: Check = (v) => typeof v === "string" && /^[a-f0-9]{64}$/i.test(v);
+const finalizeId = expect("a 64-character hexadecimal finalize ID", (v) => typeof v === "string" && /^[a-f0-9]{64}$/i.test(v));
 const checks = {
   "plan.create": object({ title: text, taskName: text, goalText: text, description: text,
     knowledgeCapture: bool, templateName: text,
@@ -61,26 +91,31 @@ const checks = {
   // Internal transport reconciliation only; no model-facing argument mapping.
   "knowledge.claim.receipt": object({ finalizeId }, ["finalizeId"]),
   "knowledge.done.receipt": object({ finalizeId, claimToken: text, expectedStatus: oneOf("succeeded", "failed"), expectedResult: text }, ["finalizeId"]),
-  "knowledge.done": (v: unknown) => object({ finalizeId, claimToken: text,
-    status: oneOf("succeeded", "failed"), result: text, error: text }, ["finalizeId", "status"])(v)
-    && ((v as { status: string }).status === "succeeded"
-      ? object({ finalizeId, claimToken: text, status: text, result: text }, ["result"])(v)
-      : object({ finalizeId, claimToken: text, status: text, error: text }, ["error"])(v)),
+  "knowledge.done": (v: unknown, field: string) => object({ finalizeId, claimToken: text,
+    status: oneOf("succeeded", "failed"), result: text, error: text }, ["finalizeId", "status"])(v, field)
+    ?? ((v as { status: string }).status === "succeeded"
+      ? object({ finalizeId, claimToken: text, status: text, result: text }, ["result"])(v, field)
+      : object({ finalizeId, claimToken: text, status: text, error: text }, ["error"])(v, field)),
 } satisfies Record<ClawCommandRequest["operation"], Check>;
 
 export function decodeClawCommand(value: unknown, options?: { allowTerminalSearchDir?: boolean }): ClawCommandRequest {
-  if (!object({ operation: text, input: () => true }, ["operation", "input"])(value)) {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "Expected only operation and input.");
+  const execution = { operation: "command.decode", phase: "prepare", outcome: "known", effect: "none" } as const;
+  const envelopeIssue = object({ operation: text, input: () => undefined }, ["operation", "input"])(value, "request");
+  if (envelopeIssue) {
+    throw new ClawError("COMMAND_INPUT_INVALID", "Invalid command request. " + envelopeIssue.message,
+      { field: envelopeIssue.field, reason: envelopeIssue.reason }, execution);
   }
   const request = value as { operation: string; input: unknown };
   if (!Object.hasOwn(checks, request.operation)) {
-    throw new ClawError("SESSION_OPERATION_UNSUPPORTED", "Operation is outside the model command contract.", { operation: request.operation });
+    throw new ClawError("SESSION_OPERATION_UNSUPPORTED", "Operation is outside the model command contract. Use a supported operation from the current tool contract.", { field: "request.operation" }, execution);
   }
   const check = request.operation === "search" && options?.allowTerminalSearchDir
     ? object({ query: text, limit: id, dir: text }, ["query"])
     : checks[request.operation as keyof typeof checks];
-  if (!check(request.input)) {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "Invalid or unsupported " + request.operation + " input.");
+  const issue = check(request.input, "input");
+  if (issue) {
+    throw new ClawError("COMMAND_INPUT_INVALID", "Invalid or unsupported " + request.operation + " input. " + issue.message,
+      { field: issue.field, reason: issue.reason }, execution);
   }
   return request as ClawCommandRequest;
 }

@@ -58,6 +58,45 @@ test("real one-shot parent rejection remains known and leaves the parent unchang
   assert.equal(fs.readFileSync(planPath, "utf8"), before);
 });
 
+test("plan.start input errors survive both entries without writes and can be corrected", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "claw-input-correction-"));
+  initProject({ cwd, projectName: "Input correction", planning: true });
+  const runtime = path.join(cwd, "session-runtime");
+  const identity = { agentSessionId: path.basename(cwd), workdir: cwd, client: { kind: "adapter" as const, host: "dsh" } };
+  const executor = new SessionCommandExecutor(new SessionRegistryV2(runtime));
+  const root = await executor.execute(identity, { operation: "plan.create", input: {
+    title: "Maintain knowledge", taskName: "input-correction", knowledgeCapture: false,
+  } });
+  const planPath = (root.output as { planPath: string }).planPath;
+  const before = fs.readFileSync(planPath, "utf8");
+  const request = { operation: "plan.start", input: { appendTasks: [{ title: "Govern knowledge", status: "pending" }] } };
+  let businessCalls = 0;
+  const execute = executor.service.execute.bind(executor.service);
+  executor.service.execute = async (...args) => { businessCalls++; return execute(...args); };
+  let persistentFailure: ReturnType<typeof serializeCommandFailure> | undefined;
+  await assert.rejects(executor.execute(identity, request), (error: unknown) => {
+    persistentFailure = serializeCommandFailure(error, "unknown");
+    assert.equal(persistentFailure.code, "COMMAND_INPUT_INVALID");
+    assert.equal(persistentFailure.details?.field, "input.appendTasks[0].status");
+    assert.equal(persistentFailure.phase, "prepare");
+    assert.equal(persistentFailure.effect, "none");
+    return true;
+  });
+  assert.equal(businessCalls, 0);
+  assert.equal(fs.readFileSync(planPath, "utf8"), before);
+  const oneShot = spawnSync(process.execPath, [fileURLToPath(new URL("../dist/bin.js", import.meta.url)), "internal-command"], {
+    cwd, env: { ...process.env, CLAW_SESSION_ID: identity.agentSessionId, CLAW_SESSION_DAEMON_RUNTIME_DIR: runtime },
+    input: JSON.stringify(request) + "\n", encoding: "utf8", timeout: 30000,
+  });
+  assert.equal(oneShot.status, 1, oneShot.stderr);
+  assert.deepEqual(JSON.parse(oneShot.stdout).error, persistentFailure);
+  assert.equal(fs.readFileSync(planPath, "utf8"), before);
+  const corrected = await executor.execute(identity, { operation: "plan.start", input: { appendTasks: [{ title: "Govern knowledge" }] } });
+  assert.equal(businessCalls, 1);
+  assert.equal((corrected.output as { planStatus: string }).planStatus, "process.active");
+  assert.equal(JSON.parse(fs.readFileSync(planPath, "utf8")).tasks.at(-1).status, "pending");
+});
+
 test("all structured owner failures keep cause and phase regardless of Error class", () => {
   const value = { code: "host.reserve-denied", message: "quota rejected", origin: "host", operation: "finalizer.reserve", phase: "admission", outcome: "unknown", effect: "unknown",
     cause: { code: "EACCES", message: "write denied", outcome: "known", effect: "none", operation: "ledger.open" } };
