@@ -1,4 +1,4 @@
-﻿# DSH knowledge dispatch and finalization
+# DSH knowledge dispatch and finalization
 
 <!-- state: current -->
 ## Current behavior
@@ -27,7 +27,7 @@ The older claim-based job lifecycle remains available for explicitly invoked leg
 - `packages/dsh-adapter/src/capture.ts`
 - `packages/dsh-adapter/src/protocol.ts` (lines 242-244)
 
-Focused regression coverage includes `packages/dsh-adapter/test/finalizer-execute.test.mjs` and `packages/cli/test/source-knowledge.test.ts`. These tests do not establish live-host deployment or production finalizer E2E.
+Focused regression coverage includes `packages/dsh-adapter/test/finalizer-execute.test.mjs` and `packages/cli/test/source-knowledge.test.ts`. These tests do not establish live-host deployment or production finalizer E2E. The 2026-11-13 checkpoint records one live rc.2 writer launch and material read; that is session-bound evidence, not a general deployment or every-provider claim.
 
 <!-- state: history -->
 ## Evolution history
@@ -35,7 +35,7 @@ Focused regression coverage includes `packages/dsh-adapter/test/finalizer-execut
 <!-- dated: 2026-11-13 -->
 ### rc.2 launch shape and carrier
 
-`startActivation` no longer accepts a nested `request`; it takes flat `parent`/`prompt`/`agentOptions` plus required `delivery` and `signal`. The finalizer passes `delivery: "caller"` so a background writer does not notify the parent model. Dispatch deduplication, no-resend-after-unknown and source-material boundaries are unchanged. Verified offline against the published rc.2 SDK shape; a live rc.2 profile run of a real knowledge closeout was not performed.
+`startActivation` no longer accepts a nested `request`; it takes flat `parent`/`prompt`/`agentOptions` plus required `delivery` and `signal`. The finalizer passes `delivery: "caller"` so a background writer does not notify the parent model. Dispatch deduplication, no-resend-after-unknown and source-material boundaries are unchanged. This checkpoint was first verified offline against the published rc.2 SDK shape. A later live rc.2 session closed a capture-enabled plan: `plan.done` dispatched a real writer, and that worker read the complete source plan and available conversation through `knowledge.materials`. That is live launch and material-handoff evidence for this route, not a claim about writer document outcomes, which the writer's own ordinary plan reports.
 
 <!-- dated: 2026-10-29 -->
 ### Source-plan handoff replaced claim protocol for DSH's new route
@@ -43,14 +43,9 @@ Focused regression coverage includes `packages/dsh-adapter/test/finalizer-execut
 The new DSH source-plan route supplies the originating session key and complete plan as material coordinates, then uses ordinary non-capturing plan/subplan workflow. It does not create a new claim job or rely on token/done/receipt. The older claim-based process remains only for explicitly invoked legacy work; it is not automatically migrated or replayed.
 
 <!-- dated: 2026-10-22 -->
-### Windows DSH 0.2.63 core smoke (historical)
+### Windows DSH 0.2.63 and 0.2.50 smokes (historical)
 
-A Windows session reported successful core workflow operations for that frozen candidate only. It did not establish later finalizer behavior or current installation state.
-
-<!-- dated: 2026-10-10 -->
-### Windows DSH 0.2.50 workflow smoke (historical)
-
-The session exercised core plan/task lifecycle, not post-plan knowledge finalization; it is not evidence for the present source-plan route.
+A Windows session on 0.2.63 reported successful core workflow operations for that frozen candidate only, while the earlier 0.2.50 session exercised core plan/task lifecycle without post-plan knowledge finalization. Neither establishes later finalizer behavior or current installation state, and neither is evidence for the present source-plan route.
 
 <!-- dated: 2026-10-03 -->
 ### Cross-host execute-first beta verification (historical)

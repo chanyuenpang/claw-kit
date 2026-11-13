@@ -1,4 +1,4 @@
-﻿# DSH adapter-owned role delegation
+# DSH adapter-owned role delegation
 
 <!-- state: current -->
 ## Current source behavior
@@ -17,13 +17,13 @@ The DSH adapter owns execution mechanics; shared role skills own the meaning of 
 
 Role exposure through model-facing tools is not an admission proof. Actual Host `subagents` business calls own authorization and argument validation; exact tool schemas, provider catalogs, wait/taskboard closure and model metadata are not shadow permission gates. rc.2 `agentTeams` boards stay optional and are not a role carrier.
 
-Per-invocation receipts are stored in the host user's .claw/runtime/adapters/dsh/delegation namespace, partitioned by real workspace and opaque parent. They are not role roster or claw plan records. DSH owns child/transport facts. Unknown sends are not replayed or moved across routes; inactive is not success. Delivery acquires the current business method before the durable attempted marker and then performs one send without another capability/catalog/model check. Existing role compatibility ignores description/display drift and unrelated diagnostics; exact child id/label/mode and output boundary remain authoritative. Native catalog reads get at most one immediate read-only retry; target diagnostic or persistent ambiguity still blocks. Receipts admitted on the removed Team carrier are rejected rather than silently re-identified.
+Per-invocation receipts are stored in the host user's .claw/runtime/adapters/dsh/delegation namespace, partitioned by real workspace and opaque parent. They are not role roster or claw plan records. DSH owns child/transport facts. Unknown sends are not replayed or moved across routes; inactive is not success. Delivery acquires the current business method before the durable attempted marker and then performs one send without another capability/catalog/model check. Existing role compatibility ignores description/display drift and unrelated diagnostics; exact child id/label/mode and output boundary remain authoritative. Native catalog reads get at most one immediate read-only retry; target diagnostic or persistent ambiguity still blocks. The rc.2 catalog read calls `listDescendants(rootId)` and keeps the rows whose direct `parentId` is this role's parent; rc.1's `listChildren` remains only a compatibility branch. Receipts admitted on the removed Team carrier are rejected rather than silently re-identified.
 
 Architecture report completion verifies the assigned actor and exact realpath boundary. The adapter registers references only against the captured current parent plan, using the CLI's internal expectedPlanPath guard. Focus changes defer registration without altering another plan. Only returned registration evidence permits a success claim.
 
 ## Automatic knowledge finalizer
 
-The main model never starts or retries a writer. New DSH finalizers use the native `subagents` family, dispatched through the same flat `delivery: "caller"` activation as foreground roles. A small Core intent contract defines architect/researcher/finalizer preference meaning, while DSH alone resolves a supported launch recipe and records requested/applied/resolved-or-unknown metadata. Exact preferences may degrade without blocking, but permission/capture/claim failures may not. The adapter uses the [canonical capture boundary](<dsh-knowledge-dispatch-and-finalization.md#current-capture-and-operational-constraints>), chooses the compatible backend, reserves exact execution and reuses a role when supported. Core remains the sole canonical job/claim/material/terminal owner. Each job gets its own full-ID delegate plan and immutable claim receipt; joint job/delegate completion drives the next job even without another parent turn. Core persists `releasedAt` after verified release so later delegate-file cleanup cannot block an already-released role. The adapter only closes the matching finished delegate, never an unrelated or newer plan. Old one-shot work retains its original execution evidence.
+The main model never starts or retries a writer. New DSH finalizers use the native `subagents` family, dispatched through the same flat `delivery: "caller"` activation as foreground roles. A small Core intent contract defines architect/researcher/finalizer preference meaning, while DSH alone resolves a supported launch recipe and records requested/applied/resolved-or-unknown metadata. Exact preferences may degrade without blocking, but permission/capture/claim failures may not. The adapter uses the [canonical capture boundary](<dsh-knowledge-dispatch-and-finalization.md#current-behavior>), chooses the compatible backend, reserves exact execution and reuses a role when supported. Core remains the sole canonical job/claim/material/terminal owner. Each job gets its own full-ID delegate plan and immutable claim receipt; joint job/delegate completion drives the next job even without another parent turn. Core persists `releasedAt` after verified release so later delegate-file cleanup cannot block an already-released role. The adapter only closes the matching finished delegate, never an unrelated or newer plan. Old one-shot work retains its original execution evidence.
 
 ## Evidence and limits
 
@@ -31,6 +31,11 @@ See [implementation and verification guide](<../../../docs/dsh-delegation.md>) a
 
 <!-- state: history -->
 ## Evolution
+
+<!-- dated: 2026-11-13 -->
+### rc.2 catalog shape and live role admission
+
+The adapter's role lookup had kept rc.1's `listChildren(parentId)` assumption, so on rc.2 it failed with `DELEGATE_NATIVE_CATALOG_UNAVAILABLE` even though role work was otherwise admissible. The read now uses `listDescendants(rootId)` and keeps the direct children by `parentId`, with `listChildren` only as a compatibility branch (`packages/dsh-adapter/src/delegation.ts`). A real rc.2 session then admitted two researcher delegations as `running`, recorded `reuse-existing` for the second, and returned the actual result through `delegate.result`.
 
 <!-- dated: 2026-11-13 -->
 ### DSH 0.2.2-rc.2 removes the Team member carrier
