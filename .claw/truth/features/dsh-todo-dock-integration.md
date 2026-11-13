@@ -52,9 +52,11 @@
 
 跨 turn 恢复修复的来源计划记录：`@veewo/dsh-claw-kit` adapter 全套 npm 测试通过，
 新增 15 个真实 adapter 入口回归；另以 DSH 0.2.2-rc.1 的真实 Session、agentEvents 与原生
-todos 投影验证首步恢复、子/父计划来源切换及 `end.leave` 清理，记录中观察到无新增模型消息或
-工具调用。此为源码与该探针版本的验证，不代表当前安装已更新：来源计划记载安装仍为
-0.2.71-rc.1，未打包/安装/发布或热改，需后续更新并重载 adapter 才会在 GUI 生效。
+todos 投影验证首步恢复、子/父计划来源切换及 `end.leave` 清理，观察到无新增模型消息或
+工具调用。随后该修复随 DSH adapter 0.2.72.2（npm `@veewo/dsh-claw-kit@0.2.72-rc.2`）
+发布；冻结包 SHA-256 为 `81dae13caaaa0fcc184f8fd83aa58a3fc974508613e706868423f128bc5bc3e8`，
+下载字节核验一致，标签 `vdsh-0.2.72.2` 与 `main`/`origin/main` 指向源码 `0e21d16`，
+工作树干净。用户选择自行安装；没有证据证明当前桌面已安装或运行时激活，不能据发布推断 GUI 已生效。
 
 ## Related code
 

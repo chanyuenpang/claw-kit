@@ -1,4 +1,4 @@
-﻿# CLI-guided workflow
+# CLI-guided workflow
 
 <!-- state: current -->
 ## 结论
@@ -33,6 +33,7 @@
 - `plan.configOverride` 是 template-only 的 runtime overlay，会通过同一条 effective-config path 影响 `autoUpdate`、`goalMode`、`knowledgeWriter` 与 `externalPlanningSkill`；它不是独立的用户级 plan patch 入口。
 - `plan write` 落在 `prepare.requirements` 且缺少 `goal.text` 时，`workflowGuidance` 的第一优先动作是先补 `goal.text`，再补 `requirements`、`tasks`、`references`、`rules`、`keyDecisions`，需求足够清楚后立刻切到 `process.active`。
 - `goal.text` 是离开 `prepare.requirements` 的硬门；没有 goal 时，任何把 plan 切到 `process.active` 的尝试都应直接失败。
+- `packages/cli/src/command-contract.ts` 的 `decodeClawCommand()` 在执行前以同一解码器检查请求形状，并对首个可修正问题返回 `COMMAND_INPUT_INVALID`、字段路径与原因；提示列出未知字段的允许字段或预期类型/值，避免回显输入值，且将执行上下文标记为 `command.decode` / `prepare` / `known` / `none`。例如新任务含多余 `status` 时，提示应省略该字段，因为新任务默认为 `pending`；拒绝不会进入业务写入，移除该字段后可正常启动。实现记录的单次与持久入口错误投影一致。此改进已在源代码和定向回归中验证，但源计划明确记录尚未安装或发布到运行环境，因此不可据此声称已安装版生效。
 - `process.wait` 和 `process.discussing` 是 canonical 的暂停 / 讨论态，不是执行态；`process.wait` 适用于真实阻塞或刻意暂停，`process.discussing` 适用于路线讨论或决策讨论，二者都会暂停 Goal Mode，并且都只提示恢复时回到 `process.active`。
 - 当 `plan.status` 从 `process.wait` 或 `process.discussing` 恢复到 `process.active` 时，`packages/core/src/workflow-guidance.ts` 会把这次进入识别为 `process.resumedActive`，并让 `goalMode.setWhen = on_resume_process_active`，而不是把它当成普通的首次进入执行态。
 - 旧版 release flow 中 task 2 `Enter process.active` 的实跑只作为版本化证据保留，不再是 `plan start` 的 current compatibility shape。当前 `claw plan start ...` 只应用当前 template task 的 `guidance.onPlanStart`；没有该声明的旧 plan 不会通过标题或任务数量被隐式识别。恢复场景仍可通过高级 `claw plan edit --status process.active` 显式进入执行态。
