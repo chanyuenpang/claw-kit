@@ -1,4 +1,4 @@
-# DSH adapter-owned role delegation
+﻿# DSH adapter-owned role delegation
 
 <!-- state: current -->
 ## Current source behavior

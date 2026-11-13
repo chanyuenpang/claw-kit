@@ -1,4 +1,4 @@
-# DSH knowledge dispatch and finalization
+﻿# DSH knowledge dispatch and finalization
 
 <!-- state: current -->
 ## Current behavior

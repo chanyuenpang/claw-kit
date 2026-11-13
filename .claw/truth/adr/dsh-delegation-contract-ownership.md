@@ -1,4 +1,4 @@
-# ADR: DSH delegation mechanics are adapter-owned
+﻿# ADR: DSH delegation mechanics are adapter-owned
 
 ## Context
 
