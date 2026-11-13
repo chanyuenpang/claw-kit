@@ -1,11 +1,18 @@
-/** Read-only DSH delegation admission. No profile changes, probes, or cached leases. */
+/**
+ * Read-only DSH delegation admission. No profile changes, probes, or cached leases.
+ *
+ * DSH 0.2.2-rc.2 removed teammate creation, messaging and the member roster from
+ * `agentTeams`; the service now owns only shared task boards (`isEnabled`,
+ * `setEnabled`, `createTask`, `getTask`, `listTasks`, `updateTask`). Every role
+ * therefore runs on the `subagents` family: activation through
+ * `startActivation` and continuation through `sendMessage`.
+ */
 export type DshDelegationCapability = {
-    selectedRoute: "team" | "native" | "unknown";
+    /** DSH 0.2.2-rc.2 has no Team carrier for roles; retained as a wire-stable value. */
+    selectedRoute: "native" | "unknown";
     ready: boolean;
     reason?: string;
-    teamId?: string;
-    leadId?: string;
-    /** Explicit adapter backend checked for managed roles, not Team tool closure config. */
+    /** Explicit adapter backend checked for managed roles, not tool closure config. */
     provider?: string;
     /** Managed continuation surface is present; actual starts can still fail. */
     reusable?: boolean;
@@ -21,13 +28,9 @@ export type DshDelegationCapabilityInput = {
     requestedReasoningEffort?: string | null;
 };
 /**
- * Current-Agent scoped Team tool exposure selects Team, not profile inventory
- * or chat declarations. No Team surface selects native, even if a residual
- * agentTeams service exists. Partial/invalid exposure is diagnosed, not used.
- * Foreground readiness checks the caller's dispatch surface, not the private
- * provider selected inside the host tool. New background finalizers use the
- * native service family; model/effort hints are resolved separately as soft
- * preferences, not an exact-match permission gate.
+ * Route all roles through the `subagents` family. `agentTeams` is intentionally
+ * not consulted: rc.2 owns no member or message operation there, and tool
+ * schemas are transport hints rather than business authorization.
  * Call again immediately before admission; this snapshot is not authorization
  * for replaying or switching an already admitted job.
  */

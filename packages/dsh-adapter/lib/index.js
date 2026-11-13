@@ -270,10 +270,8 @@ export function apply(ctx) {
     const foreground = new RoleDelegation({
         getService: (name) => c.get(name), signal: finalizerAbort.signal,
         resolveParent: async (actor) => {
-            const teams = c.get("agentTeams");
-            const membership = teams?.tryMembership?.(actor);
-            if (membership?.root && (membership.role === "lead" || membership.role === "teammate"))
-                return membership.root;
+            // rc.2 agentTeams owns shared task boards only (no tryMembership/roster);
+            // the durable parentSession link on the caller's own session is the fact.
             const parentId = actor.session?.header?.parentSession;
             if (!parentId)
                 return actor;

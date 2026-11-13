@@ -51,7 +51,6 @@ export declare class RoleDelegation {
     private notify;
     private capability;
     private fresh;
-    private teamRoster;
     private nativeCatalog;
     private targetDiagnostic;
     start(actor: DelegationActor, workdir: string, callId: string, raw: unknown): Promise<Json>;
@@ -60,6 +59,9 @@ export declare class RoleDelegation {
     private bootstrap;
     private prompt;
     private dispatch;
+    /** rc.2 catalog rows carry the durable id/label and a mode; diagnostics are filtered by id only. */
+    private roleRows;
+    private reusableMember;
     private proveWorker;
     private validateReport;
     complete(actor: DelegationActor, workdir: string, raw: unknown): Promise<Json>;
