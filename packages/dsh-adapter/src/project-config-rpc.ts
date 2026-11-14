@@ -1,3 +1,5 @@
+import { serializeFailure } from "../lib/errors.js";
+
 export type WorkspaceRecord = { id?: string; title?: string; path?: string };
 export type WorkspaceRegistry = {
   list(): readonly WorkspaceRecord[] | Promise<readonly WorkspaceRecord[]>;
@@ -37,23 +39,24 @@ export async function handleProjectConfigRpc(
     if (!workspace?.path) return failure("WORKSPACE_NOT_REGISTERED", "The requested workspace is not registered.");
 
     if (endpoint === "get") {
-      return invoke(["config", "get", "--layer", layer(request), "--key", requiredString(request, "key")], workspace.path, runConfig);
+      return await invoke(["config", "get", "--layer", layer(request), "--key", requiredString(request, "key")], workspace.path, runConfig);
     }
     if (endpoint === "set") {
-      return invoke([
+      return await invoke([
         "config", "set", "--layer", layer(request), "--key", requiredString(request, "key"),
         "--value", JSON.stringify(request.value), "--revision", requiredString(request, "revision"),
       ], workspace.path, runConfig);
     }
     if (endpoint === "unset") {
-      return invoke([
+      return await invoke([
         "config", "unset", "--layer", layer(request), "--key", requiredString(request, "key"),
         "--revision", requiredString(request, "revision"),
       ], workspace.path, runConfig);
     }
     return failure("ENDPOINT_NOT_FOUND", "Unknown claw project configuration endpoint.");
   } catch (error) {
-    return failure("PROJECT_CONFIG_REQUEST_INVALID", error instanceof Error ? error.message : String(error));
+    const diagnostic = serializeFailure(error, { fallbackCode: "PROJECT_CONFIG_REQUEST_INVALID", operation: `config.${endpoint}`, origin: "dsh" });
+    return { ok: false, error: { ...diagnostic, details: {} } };
   }
 }
 
@@ -75,19 +78,12 @@ function layer(source: Record<string, unknown>): string {
 
 async function invoke(argv: string[], cwd: string, runConfig: RunConfig): Promise<RpcResult> {
   const result = await runConfig(argv, cwd);
-  const text = result.text.trim();
+  // runConfig owns process success/failure. The config CLI returns a key
+  // snapshot directly, not the workflow protocol's `ok` envelope.
   try {
-    const parsed = JSON.parse(text) as unknown;
-    if (parsed && typeof parsed === "object" && "ok" in parsed) {
-      if ((parsed as { ok?: unknown }).ok === true) return { ok: true, value: parsed };
-      if ((parsed as { ok?: unknown }).ok === false) {
-        const error = (parsed as { error?: { code?: unknown; message?: unknown } }).error;
-        return failure(typeof error?.code === "string" ? error.code : "PROJECT_CONFIG_COMMAND_FAILED", typeof error?.message === "string" ? error.message : "claw config failed.");
-      }
-    }
-    return failure("PROJECT_CONFIG_COMMAND_FAILED", result.errText || "claw config returned no trusted result envelope.");
+    return { ok: true, value: JSON.parse(result.text) as unknown };
   } catch {
-    return failure("PROJECT_CONFIG_COMMAND_FAILED", result.errText || "claw config returned invalid JSON.");
+    return failure("PROJECT_CONFIG_RESPONSE_INVALID", "配置命令已执行，但返回结果无法解析。请刷新配置确认当前值。");
   }
 }
 

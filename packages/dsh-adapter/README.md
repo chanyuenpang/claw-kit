@@ -37,11 +37,45 @@ DSH 会话
   该恢复不产生模型工具调用、消息、提示词或 Goal/plan mutation；同一 turn 后续 step
   不重复查询。读取有 2 秒预算并随 turn 取消／插件卸载中止，失败静默跳过、不误清理
   或阻断业务。允许宿主清空至恢复完成期间短暂空白，不修改 DSH 本身。
-- 无 turn-stopping 钩子：终态入口通过 Host sessionQuery 冻结有上界的父报告，
-  交受信 CLI 发布；adapter 自动选择 Team/native、复用 finalizer，并以每 job
-  独立的 claim 与 delegate 终态推进队列，主模型不手工管理 writer。
+- 无 turn-stopping 钩子：计划完成后，每份 source-plan handoff 分发一个原生
+  `subagents` writer。worker 通过 `knowledge.materials` 按需读取完整源计划和
+  有上界的普通对话，再以普通、不捕获知识的辅助计划／子计划完成收口；不创建
+  claimable job，不复用 writer lease，也不等待第二份终态。主模型不手工管理 writer。
 - 前台 `delegate.start/result/complete` 是 adapter 本地语义入口，不转发成未知 CLI 命令。
   详见 [委派合同与验证边界](<../../docs/dsh-delegation.md>)。
+
+## DSH 0.2.2-rc.3 兼容性
+
+2026-11-14 核对：当前适配器源码版本 `0.2.72.6` 无需新增 rc.3 运行时分支，
+也不需要迁移 profile 或 Session 数据。本次不打包、不分配新候选版本、不发布／安装。
+
+核对基线是当前 Desktop 安装的 `@deepseek-ai/dsh@0.2.2-rc.2`；目标是 npm
+[官方 rc.3 发布包](<https://registry.npmjs.org/@deepseek-ai/dsh/-/dsh-0.2.2-rc.3.tgz>)，
+不是把当前运行环境误认作 rc.3。以下 15 个包中所选的 38 个相关源码文件逐字一致
+（包名均带 `@deepseek-ai/dsh-` 前缀；这是适配器使用表面的核对，不是全包无变化的声明）：
+
+| 使用表面 | 核对包 |
+| --- | --- |
+| 原生委派、目录、创建与调用者身份 | `subagent`、`subagent-spawn-in-process`、`agent` |
+| skill 注册、提示词、工具与 Goal | `skill`、`system-prompt`、`tools`、`goal` |
+| 子进程、Session、历史、workspace 与模型偏好 | `subprocess-local`、`session`、`session-query`、`workspace`、`llm` |
+| 设置入口、Slot 与浏览器 RPC | `client-ui-settings`、`client-ui-slots`、`client-connection` |
+
+其中 Slot 源码用 npm rc.2／rc.3 包比较（Desktop CLI anchor 不暴露此包）；
+其余以已安装 rc.2 源码对照 rc.3 包。继续使用 rc.2 的扁平 `startActivation`
+请求、显式 `delivery: "caller"`／`signal` 和 `listDescendants(rootId)`；
+`agentTeams` 只拥有共享任务板，不恢复旧成员载体，不增加版本／目录预检门禁。
+
+rc.3 发布包的升级索引未新增 `v0.2.2-rc.2` 迁移节。对已有 rc.1 迁移项，复核了
+`runtime-context-reminders`、`session-append-overloads` 和 `subagent-interrupt-default`：
+对话提取已按 `source.kind` 排除合成上下文，只调用而不替换 `Session.append`，
+委派也不依赖 `interrupt_agent` 工具。其余账号、Forge、附件／CUA、技能重命名、
+插件管理、终端、搜索计费与 macOS 浮层项目不涉及本适配器消费的表面，未作迁移。
+
+验证：`npm test -w @veewo/dsh-claw-kit` 完成 Core／adapter TypeScript 构建，
+现有 **166/166** 项回归通过（含身份、复用、不重发、收口、todo 与 RPC）。
+这是发布源码契约核对与受控 Host 测试，**不是 rc.3 真实会话 E2E**；未更改当前
+安装或重启 GUI。升级宿主后仍应在新会话确认计划操作、委派及知识收口。
 
 ## 安装
 
