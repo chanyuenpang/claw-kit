@@ -5,33 +5,33 @@ window.__ModuleLoader__.load({
     const { jsx, jsxs } = require("react/jsx-runtime");
     const inject = ["slots", "connection"];
     const EFFORTS = [
-      ["minimal", "最低", "尽量减少推理，优先响应速度。"],
-      ["low", "较低", "使用较少推理，适合简单的整理工作。"],
-      ["medium", "中等", "兼顾推理深度和响应速度。"],
-      ["high", "较高", "增加推理深度，可能需要更多时间。"],
-      ["xhigh", "最高", "优先深入推理，耗时可能更长；是否支持取决于所选模型。"],
+      ["minimal", "极低", "请求极低档推理投入，不等于关闭推理；仅在整理模型支持时采用。"],
+      ["low", "较低", "请求较低档推理投入；仅在整理模型支持时采用。"],
+      ["medium", "中等", "请求中等档推理投入，这是项目初始默认值；仅在整理模型支持时采用。"],
+      ["high", "较高", "请求较高档推理投入，可能增加耗时与用量；仅在整理模型支持时采用。"],
+      ["xhigh", "极高", "请求极高档推理投入，可能增加耗时与用量；仅在整理模型支持时采用。"],
     ];
     const SECTIONS = [
-      { title: "工作流程", description: "调整计划、目标推进和项目上下文。", rows: [
-        ["planning", "计划引导", "boolean", "控制计划流程中的规划引导。", "启用后，计划流程会提供规划引导。", "关闭后，不再启用项目的规划引导。"],
-        ["autoUpdate", "自动更新项目指引", "boolean", "控制项目指引的自动更新，与下方的记忆自动更新相互独立。", "允许自动更新项目指引。", "不自动更新项目指引。"],
-        ["goalMode", "目标模式", "boolean", "控制工作流是否启用宿主的目标推进能力。", "允许通过目标模式持续推进计划，实际支持由宿主决定。", "不启用工作流的目标模式。"],
-        ["maxTasksToKeep", "已完成任务保留数量", "number", "设置保留多少项已完成任务，至少保留 1 项。"],
-        ["contextPaths", "补充上下文路径", "list", "添加项目上下文路径，每行填写一条；空列表表示不添加。"],
-        ["gitnexus", "代码图谱辅助", "boolean", "控制是否启用 GitNexus 代码图谱辅助。", "启用 GitNexus 辅助；仍需环境提供对应能力。", "不启用 GitNexus 辅助。"],
+      { title: "计划与执行", description: "设置新计划的起步方式、目标自动推进和归档保留规则。", rows: [
+        ["planning", "新计划先做规划", "boolean", "使用默认模板新建计划时，是否先澄清需求、拆分任务。显式指定的工作流模板仍按自身流程执行，不受此开关影响。", "默认计划先进入讨论阶段，使用规划技能明确需求和任务，再开始执行。", "默认计划直接进入执行阶段，将原始请求作为一个任务项；不再自动添加前置规划步骤。"],
+        ["autoUpdate", "claw-kit 版本更新偏好", "boolean", "保留给版本更新引导的偏好，不是项目文档更新开关。当前 DSH 只提示可用新版本，安装仍需你明确要求。", "记录允许自动更新的偏好；当前 DSH 仍只提示新版本，不会据此自动安装。", "记录不自动更新的偏好；当前 DSH 仍可提示新版本，由你决定是否安装。"],
+        ["goalMode", "按计划目标自动推进", "boolean", "在支持的宿主中，将计划目标同步为 Goal，让助手在需要时自动继续执行；不改变计划本身的目标和任务。", "执行计划时同步宿主 Goal，允许宿主按目标继续推进；实际续跑由宿主控制。", "不为计划启用宿主 Goal 自动推进；计划与任务管理仍可正常使用。"],
+        ["maxTasksToKeep", "归档任务保留上限", "number", "最多保留多少个已归档的任务目录，默认 9 个，最少 1 个。超限时清理最旧归档及其中的报告，不是限制计划内的任务项数量。"],
+        ["contextPaths", "上下文参考路径（预留）", "list", "记录项目的补充上下文路径，每行一条。当前 DSH 不会据此自动读取文件，也不会将这些路径加入知识检索范围。"],
+        ["gitnexus", "GitNexus 代码图谱集成", "boolean", "提供代码图谱检索提示，并在计划收尾时安排索引刷新。刷新时若缺少 GitNexus，会尝试安装和初始化；不开启也能使用 claw-kit。", "启用图谱检索提示和收尾索引刷新；缺少工具时会尝试安装及初始化 GitNexus。", "不由 claw-kit 安排 GitNexus 索引刷新；不会卸载工具或删除已有图谱。"],
       ] },
-      { title: "知识整理", description: "设置计划结束后整理项目知识时的模型偏好。", rows: [
-        ["knowledgeWriter.model", "整理模型", "text", "填写宿主可用的模型标识；这是尽力采用的偏好，不会阻塞知识整理。"],
-        ["knowledgeWriter.reasoningEffort", "推理强度", "effort", "选择知识整理的推理投入；实际支持情况由宿主和模型决定。"],
+      { title: "知识整理助手", description: "设置计划结束后整理项目事实（Truth）与架构决策（ADR）的助手。以下为项目通用偏好，计划模板或宿主专属设置可以覆盖。", rows: [
+        ["knowledgeWriter.model", "知识整理模型", "text", "只影响知识整理助手，不切换当前会话模型。DSH 使用当前服务商下可用的模型 ID；选择“由宿主选择模型”时按宿主默认策略选模。偏好无法采用时仍会继续整理。"],
+        ["knowledgeWriter.reasoningEffort", "知识整理推理深度", "effort", "请求知识整理模型投入多少推理。不影响当前会话；模型不支持所选档位时，由宿主采用可用设置。"],
       ] },
-      { title: "项目记忆", description: "管理项目记忆与外部文档来源。", rows: [
-        ["memory.enabled", "项目记忆", "boolean", "控制项目记忆功能。", "启用项目记忆功能。", "关闭项目记忆功能。"],
-        ["memory.autoUpdate", "自动更新记忆", "boolean", "控制项目记忆的自动更新，不影响上方的项目指引设置。", "允许自动更新项目记忆。", "不自动更新项目记忆。"],
-        ["memory.externalDocPaths", "外部文档路径", "list", "添加外部文档来源，每行填写一条；空列表表示不添加。"],
+      { title: "知识检索与文档同步", description: "检索已沉淀的项目知识，并按需同步已有文档；与上方的模型设置分开控制。", rows: [
+        ["memory.enabled", "项目记忆总开关", "boolean", "控制 claw search 文档检索、向量索引维护和外部文档自动同步。关闭不会删除已有文档，也不会关闭 Truth/ADR 知识整理；语义检索还需单独启用 embedding。", "允许检索项目知识并维护已启用的向量索引；外部文档同步还需开启下方开关并配置路径。", "关闭 claw search、向量索引维护及外部文档自动同步；保留已有文档，Truth/ADR 知识整理仍独立运行。"],
+        ["memory.autoUpdate", "自动同步已有文档", "boolean", "知识整理后，根据最新 Truth/ADR 更新下方路径中受影响的已有文档。需开启项目记忆且路径非空；不会新建文档，也不控制 claw-kit 版本更新。", "知识整理后，按需同步指定范围内的已有文档；没有配置路径时不执行。", "不自动同步外部文档；这些文档仍可用于检索，Truth/ADR 知识整理不受此开关影响。"],
+        ["memory.externalDocPaths", "外部文档范围", "list", "将 Truth/ADR 之外的文档文件或目录加入 claw search 检索范围，同时作为自动同步文档的范围。每行一条，相对路径以项目根目录为基准；空列表表示不添加外部文档。"],
       ] },
     ];
     const ALL_ROWS = SECTIONS.flatMap((section) => section.rows.map(([key, label, kind, description, enabled, disabled]) => ({ key, label, kind, description, enabled, disabled, section: section.title })));
-    const LAYERS = { team: "团队配置", personal: "个人覆盖" };
+    const LAYERS = { team: "团队设置", personal: "个人设置" };
     const CSS = `
       .claw-settings { --claw-border: color-mix(in srgb, currentColor 16%, transparent); --claw-soft: color-mix(in srgb, currentColor 4%, transparent); --claw-accent: #4385e8; display: grid; gap: 20px; max-width: 1000px; margin: 0 auto; padding: 8px 4px 28px; font-size: 14px; line-height: 1.6; }
       .claw-settings * { box-sizing: border-box; }
@@ -54,7 +54,9 @@ window.__ModuleLoader__.load({
       .claw-settings .claw-section-heading { padding: 16px 18px; background: var(--claw-soft); display: grid; gap: 3px; }
       .claw-settings .claw-row { padding: 16px 18px; border-top: 1px solid var(--claw-border); display: grid; gap: 10px; }
       .claw-settings .claw-row-heading { display: flex; gap: 12px; justify-content: space-between; align-items: baseline; }
+      .claw-settings .claw-row-title { display: grid; gap: 2px; min-width: 0; }
       .claw-settings .claw-row-label { font-weight: 600; }
+      .claw-settings .claw-key { font-size: 12px; opacity: .66; overflow-wrap: anywhere; }
       .claw-settings .claw-values { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 10px; }
       .claw-settings .claw-value { display: grid; align-content: start; gap: 4px; min-width: 0; }
       .claw-settings .claw-value button, .claw-settings .claw-effective { text-align: left; padding: 8px 10px; min-height: 40px; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -72,19 +74,19 @@ window.__ModuleLoader__.load({
 
     function errorText(error) {
       const messages = {
-        WORKSPACE_NOT_REGISTERED: "项目已不在工作区列表中，请刷新项目。",
-        PROJECT_ROOT_NOT_FOUND: "该工作区尚未初始化为项目，请先初始化后再刷新。",
-        PROJECT_CONFIG_CONFLICT: "配置已在其他位置修改。请刷新后重新编辑，当前草稿尚未保存。",
-        PROJECT_CONFIG_INVALID: "配置内容不符合要求，请检查填写的值。",
-        PROJECT_CONFIG_RESPONSE_INVALID: "命令已执行，但返回结果无法解析。请刷新确认当前值，不要直接重复保存。",
-        PROJECT_CONFIG_KEY_INVALID: "该配置项不受支持。",
+        WORKSPACE_NOT_REGISTERED: "该项目已从 DSH 工作区移除，请刷新项目列表。",
+        PROJECT_ROOT_NOT_FOUND: "该工作区尚未初始化为 claw-kit 项目，请先完成初始化再刷新。",
+        PROJECT_CONFIG_CONFLICT: "设置已被其他操作修改，本次未保存。若有编辑草稿，请先记下内容再刷新；刷新会丢弃草稿。",
+        PROJECT_CONFIG_INVALID: "设置值未通过校验，请检查填写内容。",
+        PROJECT_CONFIG_RESPONSE_INVALID: "命令已执行，但无法确认返回结果。请先刷新核实是否已保存，不要直接重复提交。",
+        PROJECT_CONFIG_KEY_INVALID: "此设置项暂不支持编辑。",
       };
       return (messages[error?.code] || (/[\u4e00-\u9fff]/.test(error?.message || "") ? error.message : "操作未完成，请刷新后重试。")) + (error?.code ? "（错误码：" + error.code + "）" : "");
     }
 
     function display(row, value, present) {
       if (!present) return "未设置";
-      if (value === null) return "宿主默认";
+      if (value === null) return "由宿主选择模型";
       if (row.kind === "boolean") return value ? "已启用" : "已关闭";
       if (row.kind === "effort") return EFFORTS.find(([key]) => key === value)?.[1] || "未识别的强度";
       if (Array.isArray(value)) return value.length ? value.join("\n") : "无";
@@ -109,7 +111,7 @@ window.__ModuleLoader__.load({
         if (!id) return false;
         const requestId = ++request.current;
         setLoading(true);
-        setStatus({ text: "正在加载项目配置…" });
+        setStatus({ text: "正在读取项目设置…" });
         try {
           const snapshots = await Promise.all(ALL_ROWS.map(async (definition) => {
             const [team, personal] = await Promise.all(["team", "personal"].map((layer) => invoke("get", { workspaceId: id, layer, key: definition.key })));
@@ -117,7 +119,7 @@ window.__ModuleLoader__.load({
           }));
           if (requestId !== request.current) return false;
           setRows(snapshots);
-          setStatus({ text: "配置已加载。点击团队配置或个人覆盖的值即可编辑。" });
+          setStatus({ text: "设置已加载。数值仅供查看，请使用对应的编辑按钮；设置个人值后才会替代团队值。" });
           return true;
         } catch (error) {
           if (requestId === request.current) { setRows([]); setStatus({ text: errorText(error), error: true }); }
@@ -156,18 +158,20 @@ window.__ModuleLoader__.load({
         return editing.draft;
       };
       const save = async (row, unset = false) => {
-        if (!editing || mutation.current) return;
+        const target = unset ? { layer: "personal", revision: row.personal.revision } : editing;
+        if (!target || mutation.current) return;
         mutation.current = true; setSaving(true);
         try {
-          const payload = { workspaceId, layer: editing.layer, key: row.key, revision: editing.revision };
+          const payload = { workspaceId, layer: target.layer, key: row.key, revision: target.revision };
           if (!unset) payload.value = parse(row);
           await invoke(unset ? "unset" : "set", payload);
-          setEditing(undefined);
-          if (await loadRows(workspaceId)) setStatus({ text: unset ? "已恢复继承团队配置。" : "配置已保存。" });
+          if (!unset || (editing?.key === row.key && editing.layer === "personal")) setEditing(undefined);
+          if (await loadRows(workspaceId)) setStatus({ text: unset ? "已移除这项个人设置，恢复使用团队值。" : "设置已保存。" });
         } catch (error) {
           // Preserve the draft and revision. Never replay a write or silently
           // turn a conflict into an overwrite with a newly fetched revision.
-          setEditing({ ...editing, error: errorText(error) });
+          if (unset) setStatus({ text: errorText(error), error: true });
+          else setEditing({ ...editing, error: errorText(error) });
         } finally { mutation.current = false; setSaving(false); }
       };
       const control = (row) => {
@@ -178,42 +182,45 @@ window.__ModuleLoader__.load({
       };
       const editor = (row) => {
         let help = row.description;
-        if (editing.nullValue) help = "使用宿主默认偏好。显式默认值仍会覆盖团队设置；如需跟随团队，请选择恢复继承。";
+        if (editing.nullValue) help = "保存 null，由宿主按默认策略选择模型。在个人设置中，这会替代团队指定的模型，并非跟随团队；“恢复团队值”才会移除已保存的个人值。";
         else if (row.kind === "boolean") help = editing.draft === "true" ? row.enabled : row.disabled;
         else if (row.kind === "effort") help = EFFORTS.find(([value]) => value === editing.draft)?.[2] || row.description;
         return jsxs("div", { className: "claw-editor", children: [
-          jsxs("div", { children: [jsx("strong", { children: `编辑` + LAYERS[editing.layer] }), jsx("p", { className: "claw-muted", children: editing.layer === "team" ? "影响使用团队配置的成员；已有个人覆盖的值不受影响。" : "仅修改当前项目的个人偏好，不改动团队配置。" })] }),
+          jsxs("div", { children: [jsx("strong", { children: `编辑` + LAYERS[editing.layer] }), jsx("p", { className: "claw-muted", children: editing.layer === "team" ? "修改项目共享值。共享此配置且未设置个人值的成员会使用新值。" : "仅对你在此项目中的使用生效，不修改团队值。路径列表会整体替换团队列表，不会追加。" })] }),
           jsx("label", { htmlFor: "claw-config-value", children: row.label }), control(row),
-          row.kind === "text" && jsxs("label", { className: "claw-checkbox", children: [jsx("input", { type: "checkbox", checked: editing.nullValue, disabled: saving, onChange: (event) => setEditing({ ...editing, nullValue: event.target.checked, error: "" }) }), "使用宿主默认"] }),
+          row.kind === "text" && jsxs("label", { className: "claw-checkbox", children: [jsx("input", { type: "checkbox", checked: editing.nullValue, disabled: saving, onChange: (event) => setEditing({ ...editing, nullValue: event.target.checked, error: "" }) }), "由宿主选择模型（保存 null）"] }),
           jsx("p", { id: "claw-config-help", className: "claw-help", role: "status", children: help }),
           editing.error && jsx("p", { className: "claw-error", role: "alert", children: editing.error }),
           jsxs("div", { className: "claw-actions", children: [
             jsx("button", { type: "button", className: "claw-primary", disabled: saving, onClick: () => void save(row), children: saving ? "正在保存…" : "保存修改" }),
             jsx("button", { type: "button", disabled: saving, onClick: () => setEditing(undefined), children: "取消" }),
-            editing.layer === "personal" && row.personal.present && jsx("button", { type: "button", disabled: saving, onClick: () => void save(row, true), children: "恢复继承" }),
           ] }),
         ] });
       };
       const renderRow = (row) => jsxs("div", { className: "claw-row", children: [
-        jsxs("div", { className: "claw-row-heading", children: [jsx("span", { className: "claw-row-label", children: row.label }), jsx("span", { className: "claw-muted", children: row.personal.present ? "个人配置优先" : "跟随团队配置" })] }),
+        jsxs("div", { className: "claw-row-heading", children: [jsxs("div", { className: "claw-row-title", children: [jsx("span", { className: "claw-row-label", children: row.label }), jsx("code", { className: "claw-key", children: row.key })] }), jsx("span", { className: "claw-muted", children: row.personal.present ? "当前使用个人值" : "当前使用团队值" })] }),
         jsx("p", { className: "claw-muted", children: row.description }),
         jsxs("div", { className: "claw-values", children: [
           ...["team", "personal"].map((layer) => jsxs("div", { className: "claw-value", children: [
             jsx("span", { className: "claw-muted", children: LAYERS[layer] }),
-            jsx("button", { type: "button", disabled: saving || loading, "aria-label": `编辑` + row.label + "的" + LAYERS[layer], "aria-expanded": editing?.key === row.key && editing.layer === layer, onClick: () => beginEdit(row, layer), children: layer === "personal" && !row.personal.present ? "继承团队配置" : display(row, row[layer].value, row[layer].present) }),
+            jsx("div", { className: "claw-effective", children: layer === "personal" && !row.personal.present ? "使用团队值：" + display(row, row.personal.effectiveValue, row.personal.effectivePresent) : display(row, row[layer].value, row[layer].present) }),
+            jsxs("div", { className: "claw-actions", children: [
+              jsx("button", { type: "button", disabled: saving || loading, "aria-label": (layer === "team" ? "编辑团队值：" : row.personal.present ? "编辑个人值：" : "设置个人值：") + row.label, "aria-expanded": editing?.key === row.key && editing.layer === layer, onClick: () => beginEdit(row, layer), children: layer === "team" ? "编辑团队值" : row.personal.present ? "编辑个人值" : "设置个人值" }),
+              layer === "personal" && row.personal.present && jsx("button", { type: "button", disabled: saving || loading, "aria-label": "恢复团队值：" + row.label, onClick: () => void save(row, true), children: "恢复团队值" }),
+            ] }),
           ] }, layer)),
-          jsxs("div", { className: "claw-value", children: [jsx("span", { className: "claw-muted", children: "当前生效" }), jsx("div", { className: "claw-effective", children: display(row, row.personal.effectiveValue, row.personal.effectivePresent) })] }),
+          jsxs("div", { className: "claw-value", children: [jsx("span", { className: "claw-muted", children: "合并后的项目值" }), jsx("div", { className: "claw-effective", children: display(row, row.personal.effectiveValue, row.personal.effectivePresent) })] }),
         ] }),
         editing?.key === row.key && editor(row),
       ] }, row.key);
-      return jsxs("section", { className: "claw-settings", "aria-label": "项目工作流设置", "aria-busy": loading || saving, children: [
+      return jsxs("section", { className: "claw-settings", "aria-label": "Claw Kit 项目设置", "aria-busy": loading || saving, children: [
         jsx("style", { children: CSS }),
-        jsxs("header", { children: [jsx("h2", { children: "项目工作流设置" }), jsx("p", { className: "claw-muted", children: "团队配置作为基础，个人覆盖优先。选择配置值后可查看说明并编辑。" })] }),
-        jsxs("div", { className: "claw-toolbar", children: [jsxs("label", { className: "claw-project", children: [jsx("span", { children: "选择项目" }), jsx("select", { "aria-label": "选择项目", value: workspaceId, disabled: !items.length || loading || saving, onChange: (event) => { const id = event.target.value; setWorkspaceId(id); setRows([]); setEditing(undefined); void loadRows(id); }, children: items.length ? items.map((item) => jsx("option", { value: item.workspaceId, children: item.title }, item.workspaceId)) : jsx("option", { value: "", children: "暂无可选项目" }) })] }), jsx("button", { type: "button", disabled: loading || saving, onClick: () => void loadProjects(), children: "刷新配置" })] }),
+        jsxs("header", { children: [jsx("h2", { children: "Claw Kit 项目设置" }), jsx("p", { className: "claw-muted", children: "团队设置供项目成员共享。未设置个人值时使用团队值；个人设置只对你生效。“恢复团队值”会移除该项个人设置。" })] }),
+        jsxs("div", { className: "claw-toolbar", children: [jsxs("label", { className: "claw-project", children: [jsx("span", { children: "选择项目" }), jsx("select", { "aria-label": "选择项目", value: workspaceId, disabled: !items.length || loading || saving, onChange: (event) => { const id = event.target.value; setWorkspaceId(id); setRows([]); setEditing(undefined); void loadRows(id); }, children: items.length ? items.map((item) => jsx("option", { value: item.workspaceId, children: item.title }, item.workspaceId)) : jsx("option", { value: "", children: "暂无可选项目" }) })] }), jsx("button", { type: "button", disabled: loading || saving, onClick: () => void loadProjects(), children: "重新加载设置" })] }),
         jsx("p", { className: "claw-status" + (status.error ? " claw-error" : ""), role: status.error ? "alert" : "status", children: status.text }),
-        !rows.length && jsx("p", { className: "claw-empty", children: loading ? "正在读取配置，请稍候…" : "暂无可显示的配置，请检查项目状态后刷新。" }),
+        !rows.length && jsx("p", { className: "claw-empty", children: loading ? "正在读取设置，请稍候…" : "暂无可显示的设置，请检查项目状态后重新加载。" }),
         rows.length > 0 && SECTIONS.map((section) => jsxs("section", { className: "claw-section", "aria-label": section.title, children: [jsxs("div", { className: "claw-section-heading", children: [jsx("h3", { children: section.title }), jsx("p", { className: "claw-muted", children: section.description })] }), rows.filter((row) => row.section === section.title).map(renderRow)] }, section.title)),
-        jsx("p", { className: "claw-muted", children: "团队设置保存在 .claw/project.json，个人设置保存在 .claw/project-override.json。刷新会放弃尚未保存的草稿。" }),
+        jsx("p", { className: "claw-muted", children: "团队设置保存在 .claw/project.json，个人设置保存在本机的 .claw/project-override.json。“合并后的项目值”不含计划模板或宿主专属覆盖。重新加载会丢弃未保存的草稿。" }),
       ] });
     }
     function apply(ctx) {

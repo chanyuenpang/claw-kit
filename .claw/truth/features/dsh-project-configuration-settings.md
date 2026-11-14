@@ -10,9 +10,9 @@
 - Core owns layer reads, effective merge, approved key-path validation, JSON validation, schema validation, optimistic revision checks, and atomic writes. The CLI only exposes this contract; the DSH adapter remains a narrow workspace-authorizing bridge.
 - Each editable layer has its own revision. A stale save or unset fails rather than overwriting a newer layer value; effective values are displayed read-only.
 - The section groups approved keys under Workflow, Knowledge writer, and Memory. Values are read-only until one team or personal cell enters edit mode; only that cell shows Apply and Cancel, rather than exposing a page-level save or raw project JSON editor.
-- The settings experience uses Chinese labels, help, and status text in grouped cards; selecting an option shows its explanation and team/personal scope. Responsive spacing and dark-mode styling keep the form usable in narrow layouts.
+- The settings experience uses Chinese labels, help, and status text in grouped cards; the corrected labels explain field semantics from the schema/defaults and actual consumers, and show each field's original English configuration key. Responsive spacing and dark-mode styling keep the form usable in narrow layouts.
 - The DSH bridge treats `runConfig` process success/failure as authoritative. Successful `claw config` output is a direct JSON configuration snapshot, not a workflow `ok` envelope; only malformed JSON is translated to `PROJECT_CONFIG_RESPONSE_INVALID`. Errors retain safe structured code and phase without retrying writes.
-- A personal cell with no override clearly shows its inherited effective value. Restore inheritance invokes `unset`; explicit `null` is a separately selectable persisted override rather than inherited absence.
+- A personal cell with no override presents the effective team value as read-only status; a distinct “set personal value” action opens editing. When a personal override exists, “edit personal value” opens its editor and “restore team value” directly invokes `unset` rather than opening the editor. The restore action deletes only the current personal-layer override using that layer's revision; it does not write `null` and does not silently retry a conflict. Explicit `null` remains a separately selectable persisted override, not inherited absence. Team and effective values remain read-only outside their own explicit edit actions.
 - On a revision conflict, the client retains the draft and original revision and asks the user to review and explicitly retry; it does not silently fetch a new revision or overwrite. Stale workspace responses are ignored.
 - Local Desktop development tarballs use `@veewo/dsh-claw-kit-dev` consistently across `package.json`, the bundle patch module name, and the browser `ModuleLoader` factory ID. The dev exporter rewrites these three identity surfaces together; changing only the manifest or Host row makes DSH reload the unmatched script and fail on duplicate production-factory registration.
 
@@ -23,7 +23,8 @@
 - `packages/cli/src/cli.ts`
 - `packages/dsh-adapter/src/index.ts`
 - `packages/dsh-adapter/src/project-config-rpc.ts`
-- `packages/dsh-adapter/client.js` (settings UI labels, help, and status)
+- `packages/dsh-adapter/client.js` (settings UI labels, help, status, and inheritance/edit actions)
+- `packages/dsh-adapter/lib/client.js` (generated client copy; kept aligned with the source)
 - `packages/dsh-adapter/test/project-config-rpc.test.mjs`
 - `scripts/export-dsh-dev-plugin.mjs`
 - `scripts/dsh-dev-plugin-bundle.test.mjs`
