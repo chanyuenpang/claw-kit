@@ -9,6 +9,11 @@ The repository owner uses direct delivery by default.
 - Before a release or direct push, classify every local change. Commit useful repository content; remove disposable output; ignore intentional local-only artifacts. Do not use a stash to bypass a clean-worktree check.
 - A release is complete only after local `main` equals `origin/main` and `git status --porcelain` is empty.
 
+## Local DSH plugin delivery
+
+- Implementation and optimization requests for this repository's DSH adapter include preparing a new frozen local candidate and installing it into the owner's current authorized DSH profile. Do not stop at source-only delivery or ask the owner to repeat "package and install". Discussion/review-only requests do not authorize installation.
+- Leave DSH restart to the owner. Local delivery does not authorize remote publication, pushing, version exemptions, or starting a trial.
+
 ## Local beta and promotion
 
 - Every new installable candidate allocates a new intended stable version using the artifact family’s existing release numbering rules, including locally reserved/unpublished versions. Never add a beta suffix or reuse a version for different bytes. Prepare versions, commit source on local `main`, then freeze npm tarballs and composed adapter artifacts. Failed same-input preparation may resume; a frozen candidate is reused, never rebuilt. Beta must never push a branch/tag or publish npm/GitHub artifacts.

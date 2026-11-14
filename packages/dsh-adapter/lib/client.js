@@ -4,223 +4,272 @@ window.__ModuleLoader__.load({
     const React = require("react");
     const { jsx, jsxs } = require("react/jsx-runtime");
     const inject = ["slots", "connection"];
-    const EFFORTS = [
-      ["minimal", "极低", "请求极低档推理投入，不等于关闭推理；仅在整理模型支持时采用。"],
-      ["low", "较低", "请求较低档推理投入；仅在整理模型支持时采用。"],
-      ["medium", "中等", "请求中等档推理投入，这是项目初始默认值；仅在整理模型支持时采用。"],
-      ["high", "较高", "请求较高档推理投入，可能增加耗时与用量；仅在整理模型支持时采用。"],
-      ["xhigh", "极高", "请求极高档推理投入，可能增加耗时与用量；仅在整理模型支持时采用。"],
-    ];
+    const EFFORTS = [["minimal", "极低"], ["low", "较低"], ["medium", "中等"], ["high", "较高"], ["xhigh", "极高"]];
     const SECTIONS = [
-      { title: "计划与执行", description: "设置新计划的起步方式、目标自动推进和归档保留规则。", rows: [
-        ["planning", "新计划先做规划", "boolean", "使用默认模板新建计划时，是否先澄清需求、拆分任务。显式指定的工作流模板仍按自身流程执行，不受此开关影响。", "默认计划先进入讨论阶段，使用规划技能明确需求和任务，再开始执行。", "默认计划直接进入执行阶段，将原始请求作为一个任务项；不再自动添加前置规划步骤。"],
-        ["autoUpdate", "claw-kit 版本更新偏好", "boolean", "保留给版本更新引导的偏好，不是项目文档更新开关。当前 DSH 只提示可用新版本，安装仍需你明确要求。", "记录允许自动更新的偏好；当前 DSH 仍只提示新版本，不会据此自动安装。", "记录不自动更新的偏好；当前 DSH 仍可提示新版本，由你决定是否安装。"],
-        ["goalMode", "按计划目标自动推进", "boolean", "在支持的宿主中，将计划目标同步为 Goal，让助手在需要时自动继续执行；不改变计划本身的目标和任务。", "执行计划时同步宿主 Goal，允许宿主按目标继续推进；实际续跑由宿主控制。", "不为计划启用宿主 Goal 自动推进；计划与任务管理仍可正常使用。"],
-        ["maxTasksToKeep", "归档任务保留上限", "number", "最多保留多少个已归档的任务目录，默认 9 个，最少 1 个。超限时清理最旧归档及其中的报告，不是限制计划内的任务项数量。"],
-        ["contextPaths", "上下文参考路径（预留）", "list", "记录项目的补充上下文路径，每行一条。当前 DSH 不会据此自动读取文件，也不会将这些路径加入知识检索范围。"],
-        ["gitnexus", "GitNexus 代码图谱集成", "boolean", "提供代码图谱检索提示，并在计划收尾时安排索引刷新。刷新时若缺少 GitNexus，会尝试安装和初始化；不开启也能使用 claw-kit。", "启用图谱检索提示和收尾索引刷新；缺少工具时会尝试安装及初始化 GitNexus。", "不由 claw-kit 安排 GitNexus 索引刷新；不会卸载工具或删除已有图谱。"],
+      { title: "工作流", rows: [
+        ["planning", "先规划再执行", "boolean", "默认计划先澄清需求、拆分任务。关闭后直接执行原始请求；显式工作流模板不受影响。"],
+        ["goalMode", "自动推进", "boolean", "将计划目标同步为宿主 Goal，由宿主按需续跑。关闭不影响计划和任务管理。"],
+        ["maxTasksToKeep", "归档保留数量", "number", "保留的归档任务目录数，默认 9，最少 1。不是计划内的任务项数量。", "超限删除最旧归档及报告"],
+        ["gitnexus", "GitNexus", "boolean", "提供代码图谱检索提示，并在计划收尾时刷新索引。关闭不会卸载工具或删除图谱。", "自动刷新图谱，缺少工具时会安装"],
       ] },
-      { title: "知识整理助手", description: "设置计划结束后整理项目事实（Truth）与架构决策（ADR）的助手。以下为项目通用偏好，计划模板或宿主专属设置可以覆盖。", rows: [
-        ["knowledgeWriter.model", "知识整理模型", "text", "只影响知识整理助手，不切换当前会话模型。DSH 使用当前服务商下可用的模型 ID；选择“由宿主选择模型”时按宿主默认策略选模。偏好无法采用时仍会继续整理。"],
-        ["knowledgeWriter.reasoningEffort", "知识整理推理深度", "effort", "请求知识整理模型投入多少推理。不影响当前会话；模型不支持所选档位时，由宿主采用可用设置。"],
+      { title: "知识整理", rows: [
+        ["knowledgeWriter.model", "模型", "text", "用于计划结束后的 Truth/ADR 整理，不切换当前会话模型。填写当前服务商下的模型 ID；留空保存为宿主默认，不等于继承团队。模板或宿主专属设置可覆盖此偏好。"],
+        ["knowledgeWriter.reasoningEffort", "推理深度", "effort", "知识整理助手的推理投入，默认中等；仅在模型支持时采用，较高档位可能增加耗时与用量。"],
       ] },
-      { title: "知识检索与文档同步", description: "检索已沉淀的项目知识，并按需同步已有文档；与上方的模型设置分开控制。", rows: [
-        ["memory.enabled", "项目记忆总开关", "boolean", "控制 claw search 文档检索、向量索引维护和外部文档自动同步。关闭不会删除已有文档，也不会关闭 Truth/ADR 知识整理；语义检索还需单独启用 embedding。", "允许检索项目知识并维护已启用的向量索引；外部文档同步还需开启下方开关并配置路径。", "关闭 claw search、向量索引维护及外部文档自动同步；保留已有文档，Truth/ADR 知识整理仍独立运行。"],
-        ["memory.autoUpdate", "自动同步已有文档", "boolean", "知识整理后，根据最新 Truth/ADR 更新下方路径中受影响的已有文档。需开启项目记忆且路径非空；不会新建文档，也不控制 claw-kit 版本更新。", "知识整理后，按需同步指定范围内的已有文档；没有配置路径时不执行。", "不自动同步外部文档；这些文档仍可用于检索，Truth/ADR 知识整理不受此开关影响。"],
-        ["memory.externalDocPaths", "外部文档范围", "list", "将 Truth/ADR 之外的文档文件或目录加入 claw search 检索范围，同时作为自动同步文档的范围。每行一条，相对路径以项目根目录为基准；空列表表示不添加外部文档。"],
+      { title: "文档", rows: [
+        ["memory.enabled", "知识检索", "boolean", "控制 claw search、向量索引维护和外部文档同步。关闭不删除文档，也不关闭 Truth/ADR 整理。语义检索需另行启用 embedding。"],
+        ["memory.externalDocPaths", "文档路径", "list", "Truth/ADR 之外用于检索和同步的文档文件或目录。相对路径以项目根目录为准。个人列表整体替换团队列表，不会追加。"],
+        ["memory.autoUpdate", "同步已有文档", "boolean", "知识整理后，按最新 Truth/ADR 更新上述路径内受影响的已有文档。需开启知识检索并配置路径；不会新建文档，与版本更新无关。"],
       ] },
     ];
-    const ALL_ROWS = SECTIONS.flatMap((section) => section.rows.map(([key, label, kind, description, enabled, disabled]) => ({ key, label, kind, description, enabled, disabled, section: section.title })));
-    const LAYERS = { team: "团队设置", personal: "个人设置" };
-    const CSS = `
-      .claw-settings { --claw-border: color-mix(in srgb, currentColor 16%, transparent); --claw-soft: color-mix(in srgb, currentColor 4%, transparent); --claw-accent: #4385e8; display: grid; gap: 20px; max-width: 1000px; margin: 0 auto; padding: 8px 4px 28px; font-size: 14px; line-height: 1.6; }
-      .claw-settings * { box-sizing: border-box; }
-      .claw-settings h2, .claw-settings h3, .claw-settings p { margin: 0; }
-      .claw-settings h2 { font-size: 21px; font-weight: 650; }
-      .claw-settings h3 { font-size: 15px; font-weight: 650; }
-      .claw-settings .claw-muted { opacity: .66; font-size: 12px; }
-      .claw-settings .claw-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
-      .claw-settings .claw-project { flex: 1 1 220px; display: grid; gap: 6px; }
-      .claw-settings select, .claw-settings input:not([type=checkbox]), .claw-settings textarea { width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--claw-border); border-radius: 8px; background: var(--claw-soft); color: inherit; font: inherit; }
-      .claw-settings option { background: Canvas; color: CanvasText; }
-      .claw-settings textarea { resize: vertical; min-height: 100px; }
-      .claw-settings button { font: inherit; color: inherit; cursor: pointer; border: 1px solid var(--claw-border); border-radius: 8px; padding: 8px 13px; background: transparent; }
-      .claw-settings button:hover:not(:disabled) { background: var(--claw-soft); border-color: var(--claw-accent); }
-      .claw-settings :is(button, select, input, textarea):focus-visible { outline: 2px solid var(--claw-accent); outline-offset: 2px; }
-      .claw-settings :disabled { opacity: .5; cursor: not-allowed; }
-      .claw-settings .claw-status { padding: 9px 12px; background: var(--claw-soft); border-radius: 8px; font-size: 12px; overflow-wrap: anywhere; }
-      .claw-settings .claw-error { color: #d34949; }
-      .claw-settings .claw-section { border: 1px solid var(--claw-border); border-radius: 12px; overflow: hidden; }
-      .claw-settings .claw-section-heading { padding: 16px 18px; background: var(--claw-soft); display: grid; gap: 3px; }
-      .claw-settings .claw-row { padding: 16px 18px; border-top: 1px solid var(--claw-border); display: grid; gap: 10px; }
-      .claw-settings .claw-row-heading { display: flex; gap: 12px; justify-content: space-between; align-items: baseline; }
-      .claw-settings .claw-row-title { display: grid; gap: 2px; min-width: 0; }
-      .claw-settings .claw-row-label { font-weight: 600; }
-      .claw-settings .claw-key { font-size: 12px; opacity: .66; overflow-wrap: anywhere; }
-      .claw-settings .claw-values { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 10px; }
-      .claw-settings .claw-value { display: grid; align-content: start; gap: 4px; min-width: 0; }
-      .claw-settings .claw-value button, .claw-settings .claw-effective { text-align: left; padding: 8px 10px; min-height: 40px; white-space: pre-wrap; overflow-wrap: anywhere; }
-      .claw-settings .claw-value button[aria-expanded=true] { border-color: var(--claw-accent); background: color-mix(in srgb, var(--claw-accent) 9%, transparent); }
-      .claw-settings .claw-effective { border: 1px solid transparent; border-radius: 8px; background: var(--claw-soft); }
-      .claw-settings .claw-editor { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--claw-border); border-left: 3px solid var(--claw-accent); border-radius: 8px; }
-      .claw-settings .claw-help { font-size: 13px; padding: 10px 12px; border-radius: 6px; background: var(--claw-soft); }
-      .claw-settings .claw-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-      .claw-settings .claw-primary { background: var(--claw-accent); border-color: var(--claw-accent); color: #fff; }
-      .claw-settings .claw-actions .claw-primary:hover:not(:disabled) { background: #3474d1; }
-      .claw-settings .claw-checkbox { display: flex; gap: 8px; align-items: center; font-size: 13px; }
-      .claw-settings .claw-empty { text-align: center; padding: 28px 16px; opacity: .7; }
-      @media (max-width: 600px) { .claw-settings .claw-row, .claw-settings .claw-section-heading { padding: 14px; } .claw-settings .claw-row-heading { flex-wrap: wrap; gap: 2px; } }
-    `;
-
+    const ADVANCED = [
+      ["autoUpdate", "版本更新偏好", "boolean", "兼容字段。当前 DSH 仍只提示可用新版本，安装需要你明确要求；此项不控制文档更新。"],
+      ["contextPaths", "上下文路径", "list", "预留参考路径。当前 DSH 不会据此自动读取文件或将其加入检索范围。"],
+    ];
+    const definitions = (rows) => rows.map(([key, label, kind, help, note]) => ({ key, label, kind, help, note }));
+    const ALL_ROWS = [...SECTIONS.flatMap((section) => definitions(section.rows)), ...definitions(ADVANCED)];
+    const identity = (workspaceId, layer, key) => JSON.stringify([workspaceId, layer, key]);
+    const draftText = (row, value) => row.kind === "list" ? (Array.isArray(value) ? value.join("\n") : "") : value == null ? "" : String(value);
+    function readValue(source, key) {
+      for (const part of key.split(".")) {
+        if (!source || !Object.prototype.hasOwnProperty.call(source, part)) return { present: false };
+        source = source[part];
+      }
+      return { present: true, value: source };
+    }
+    function keySnapshot(snapshot, layer, key) {
+      const value = readValue(snapshot[layer], key), effective = readValue(snapshot.effective, key);
+      return { ...value, revision: snapshot.revisions[layer], effectivePresent: effective.present, effectiveValue: effective.value };
+    }
     function errorText(error) {
       const messages = {
-        WORKSPACE_NOT_REGISTERED: "该项目已从 DSH 工作区移除，请刷新项目列表。",
-        PROJECT_ROOT_NOT_FOUND: "该工作区尚未初始化为 claw-kit 项目，请先完成初始化再刷新。",
-        PROJECT_CONFIG_CONFLICT: "设置已被其他操作修改，本次未保存。若有编辑草稿，请先记下内容再刷新；刷新会丢弃草稿。",
-        PROJECT_CONFIG_INVALID: "设置值未通过校验，请检查填写内容。",
-        PROJECT_CONFIG_RESPONSE_INVALID: "命令已执行，但无法确认返回结果。请先刷新核实是否已保存，不要直接重复提交。",
-        PROJECT_CONFIG_KEY_INVALID: "此设置项暂不支持编辑。",
+        WORKSPACE_NOT_REGISTERED: "项目已移除，请刷新项目列表。",
+        PROJECT_ROOT_NOT_FOUND: "请先初始化 claw-kit 项目。",
+        PROJECT_CONFIG_CONFLICT: "配置已变化，草稿保留。重新读取会放弃本项草稿。",
+        PROJECT_CONFIG_INVALID: "设置值不符合要求。",
+        PROJECT_CONFIG_RESPONSE_INVALID: "结果待确认，请重新读取，不要重复提交。",
+        PROJECT_CONFIG_KEY_INVALID: "不支持此设置项。",
       };
-      return (messages[error?.code] || (/[\u4e00-\u9fff]/.test(error?.message || "") ? error.message : "操作未完成，请刷新后重试。")) + (error?.code ? "（错误码：" + error.code + "）" : "");
+      return messages[error?.code] || (/[\u4e00-\u9fff]/.test(error?.message || "") ? error.message : "操作未完成，请重新读取后再试。");
     }
-
-    function display(row, value, present) {
-      if (!present) return "未设置";
-      if (value === null) return "由宿主选择模型";
-      if (row.kind === "boolean") return value ? "已启用" : "已关闭";
-      if (row.kind === "effort") return EFFORTS.find(([key]) => key === value)?.[1] || "未识别的强度";
-      if (Array.isArray(value)) return value.length ? value.join("\n") : "无";
-      return value === "" ? "空值" : String(value);
-    }
+    const CSS = `
+      .claw-settings { --claw-border: var(--dsw-alias-border-l1, color-mix(in srgb, currentColor 15%, transparent)); --claw-soft: var(--dsw-alias-bg-layer-1, color-mix(in srgb, currentColor 4%, transparent)); --claw-accent: var(--dsw-alias-brand-primary, #4385e8); --claw-muted: var(--dsw-alias-label-secondary, inherit); max-width: 800px; margin: 0 auto; padding: 8px 4px 24px; font-size: 14px; line-height: 1.5; }
+      .claw-settings * { box-sizing: border-box; }
+      .claw-settings h2, .claw-settings h3, .claw-settings p { margin: 0; }
+      .claw-settings h2 { font-size: 18px; font-weight: 650; margin-bottom: 14px; }
+      .claw-settings h3 { font-size: 14px; font-weight: 650; padding: 0 0 5px; color: var(--claw-muted); }
+      .claw-settings button, .claw-settings input, .claw-settings select, .claw-settings textarea { font: inherit; color: inherit; }
+      .claw-settings button { cursor: pointer; border: 1px solid var(--claw-border); border-radius: 6px; background: transparent; padding: 5px 9px; }
+      .claw-settings button:hover:not(:disabled) { background: var(--claw-soft); }
+      .claw-settings :is(button, select, input, textarea, summary):focus-visible { outline: 2px solid var(--claw-accent); outline-offset: 2px; }
+      .claw-settings :disabled { cursor: not-allowed; opacity: .5; }
+      .claw-settings .claw-toolbar { display: flex; align-items: center; gap: 10px; }
+      .claw-settings .claw-project { flex: 1; min-width: 0; }
+      .claw-settings .claw-scope { display: flex; gap: 2px; padding: 2px; background: var(--claw-soft); border: 1px solid var(--claw-border); border-radius: 8px; }
+      .claw-settings .claw-scope button { border-color: transparent; white-space: nowrap; padding: 4px 11px; }
+      .claw-settings .claw-scope button[aria-pressed=true] { border-color: var(--claw-border); background: var(--dsw-alias-bg-base, Canvas); }
+      .claw-settings .claw-scope-note { color: var(--claw-muted); opacity: .7; font-size: 12px; margin: 7px 0 18px; }
+      .claw-settings .claw-group { margin-top: 20px; }
+      .claw-settings .claw-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 300px); gap: 6px 18px; align-items: center; padding: 11px 0; border-top: 1px solid var(--claw-border); }
+      .claw-settings .claw-name { min-width: 0; }
+      .claw-settings .claw-label { display: flex; align-items: center; gap: 6px; }
+      .claw-settings .claw-key { display: block; color: var(--claw-muted); opacity: .6; font-size: 12px; overflow-wrap: anywhere; }
+      .claw-settings .claw-note { color: var(--claw-muted); opacity: .8; font-size: 11px; }
+      .claw-settings .claw-info { padding: 0; width: 18px; height: 18px; line-height: 16px; border: 0; border-radius: 50%; color: var(--claw-muted); opacity: .6; font-size: 12px; }
+      .claw-settings .claw-value { display: flex; align-items: center; justify-content: flex-end; gap: 7px; min-width: 0; }
+      .claw-settings .claw-origin, .claw-settings .claw-progress { color: var(--claw-muted); opacity: .65; font-size: 11px; white-space: nowrap; }
+      .claw-settings .claw-value input, .claw-settings .claw-value select { width: 170px; min-width: 0; }
+      .claw-settings input, .claw-settings select, .claw-settings textarea { border: 1px solid var(--claw-border); border-radius: 6px; background: var(--claw-soft); padding: 6px 8px; }
+      .claw-settings .claw-project select { width: 100%; }
+      .claw-settings option { background: Canvas; color: CanvasText; }
+      .claw-settings textarea { display: block; width: 100%; min-height: 86px; resize: vertical; }
+      .claw-settings .claw-switch { flex: 0 0 auto; position: relative; width: 34px; height: 20px; padding: 0; border-radius: 12px; background: color-mix(in srgb, currentColor 20%, transparent); }
+      .claw-settings .claw-switch[aria-checked=true] { background: var(--claw-accent); border-color: var(--claw-accent); }
+      .claw-settings .claw-switch::after { content: ''; position: absolute; width: 14px; height: 14px; top: 2px; left: 2px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px #0003; }
+      .claw-settings .claw-switch[aria-checked=true]::after { left: 16px; }
+      .claw-settings .claw-icon { flex: 0 0 auto; padding: 3px; min-width: 25px; height: 27px; border-color: transparent; }
+      .claw-settings .claw-confirm { color: var(--claw-accent); }
+      .claw-settings .claw-wide { grid-column: 1 / -1; }
+      .claw-settings .claw-help { font-size: 12px; color: var(--claw-muted); background: var(--claw-soft); border-radius: 6px; padding: 9px 11px; }
+      .claw-settings .claw-error { color: var(--dsw-alias-state-error-primary, #d34949); font-size: 12px; overflow-wrap: anywhere; }
+      .claw-settings .claw-error button { margin-left: 8px; font-size: 12px; }
+      .claw-settings .claw-list-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
+      .claw-settings .claw-advanced { margin-top: 18px; }
+      .claw-settings .claw-advanced > summary { cursor: pointer; color: var(--claw-muted); padding: 6px 0; }
+      .claw-settings .claw-empty { color: var(--claw-muted); padding: 20px 0; }
+      @media (max-width: 540px) {
+        .claw-settings .claw-row { grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; }
+        .claw-settings .claw-value { flex-wrap: wrap; max-width: 180px; gap: 4px; }
+        .claw-settings .claw-value input, .claw-settings .claw-value select { width: 125px; }
+        .claw-settings .claw-scope button { padding: 4px 8px; }
+      }
+    `;
 
     function ProjectConfigSection({ call }) {
-      const [items, setItems] = React.useState([]);
-      const [workspaceId, setWorkspaceId] = React.useState("");
-      const [rows, setRows] = React.useState([]);
-      const [editing, setEditing] = React.useState();
-      const [status, setStatus] = React.useState({ text: "正在加载项目…" });
-      const [loading, setLoading] = React.useState(true);
-      const [saving, setSaving] = React.useState(false);
-      const request = React.useRef(0), mutation = React.useRef(false);
+      const [items, setItems] = React.useState([]), [workspaceId, setWorkspaceId] = React.useState("");
+      const [layer, setLayer] = React.useState("personal"), [rows, setRows] = React.useState([]);
+      const [drafts, setDrafts] = React.useState({}), [issues, setIssues] = React.useState({});
+      const [loading, setLoading] = React.useState(true), [pending, setPending] = React.useState("");
+      const [pageError, setPageError] = React.useState(""), [helpKey, setHelpKey] = React.useState("");
+      const request = React.useRef(0), mutation = React.useRef(false), view = React.useRef({});
+      view.current = { workspaceId, layer };
       const invoke = async (endpoint, payload) => {
         const result = await call(endpoint, payload);
         if (!result || result.ok !== true) throw Object.assign(new Error(result?.error?.message || "请求失败。"), result?.error);
         return result.value;
       };
-      const loadRows = async (id) => {
-        if (!id) return false;
-        const requestId = ++request.current;
-        setLoading(true);
-        setStatus({ text: "正在读取项目设置…" });
+      const loadRows = async (id, preserveRows = false) => {
+        const turn = ++request.current;
+        setLoading(true); setPageError("");
         try {
-          const snapshots = await Promise.all(ALL_ROWS.map(async (definition) => {
-            const [team, personal] = await Promise.all(["team", "personal"].map((layer) => invoke("get", { workspaceId: id, layer, key: definition.key })));
-            return { ...definition, team, personal };
+          const next = await Promise.all(ALL_ROWS.map(async (row) => {
+            const [team, personal] = await Promise.all(["team", "personal"].map((scope) => invoke("get", { workspaceId: id, layer: scope, key: row.key })));
+            return { ...row, team, personal };
           }));
-          if (requestId !== request.current) return false;
-          setRows(snapshots);
-          setStatus({ text: "设置已加载。数值仅供查看，请使用对应的编辑按钮；设置个人值后才会替代团队值。" });
-          return true;
+          if (turn === request.current) setRows(next);
+          return turn === request.current;
         } catch (error) {
-          if (requestId === request.current) { setRows([]); setStatus({ text: errorText(error), error: true }); }
+          if (turn === request.current) { if (!preserveRows) setRows([]); setPageError(errorText(error)); }
           return false;
-        } finally {
-          if (requestId === request.current) setLoading(false);
-        }
+        } finally { if (turn === request.current) setLoading(false); }
       };
       const loadProjects = async () => {
-        setLoading(true);
-        setStatus({ text: "正在加载项目…" });
+        const turn = ++request.current;
+        setLoading(true); setPageError("");
         try {
-          const listed = await invoke("list", {}), next = Array.isArray(listed?.items) ? listed.items : [];
-          const id = next.some((item) => item.workspaceId === workspaceId) ? workspaceId : next[0]?.workspaceId || "";
-          setItems(next); setWorkspaceId(id); setEditing(undefined);
+          const listed = await invoke("list", {});
+          if (turn !== request.current) return;
+          const next = listed.items, currentId = view.current.workspaceId;
+          const id = next.some((item) => item.workspaceId === currentId) ? currentId : next[0]?.workspaceId || "";
+          setItems(next); setWorkspaceId(id);
           if (id) await loadRows(id);
-          else { setRows([]); setStatus({ text: "暂无已登记的工作区，请先添加项目。" }); }
-        } catch (error) { setStatus({ text: errorText(error), error: true }); }
-        finally { setLoading(false); }
+          else { setRows([]); setLoading(false); }
+        } catch (error) {
+          if (turn === request.current) { setPageError(errorText(error)); setLoading(false); }
+        }
       };
       React.useEffect(() => { void loadProjects(); return () => { request.current++; }; }, []);
-      const beginEdit = (row, layer) => {
-        const snapshot = row[layer], value = snapshot.present ? snapshot.value : row.personal.effectiveValue;
-        const draft = row.kind === "list" ? (Array.isArray(value) ? value.join("\n") : "") : value == null ? (row.kind === "boolean" ? "false" : row.kind === "effort" ? "medium" : "") : String(value);
-        setEditing({ key: row.key, layer, draft, nullValue: value === null, revision: snapshot.revision, error: "" });
+      const dropDraft = (id) => setDrafts((current) => { const next = { ...current }; delete next[id]; return next; });
+      const changeDraft = (row, text) => {
+        const id = identity(workspaceId, layer, row.key);
+        setDrafts((current) => ({ ...current, [id]: { workspaceId, layer, key: row.key, revision: row[layer].revision, ...current[id], text } }));
       };
-      const parse = (row) => {
-        if (editing.nullValue) return null;
-        if (row.kind === "boolean") return editing.draft === "true";
-        if (row.kind === "number") {
-          const value = Number(editing.draft);
-          if (!Number.isInteger(value) || value < 1) throw new Error("请输入不小于 1 的整数。");
-          return value;
-        }
-        if (row.kind === "list") return editing.draft.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
-        return editing.draft;
-      };
-      const save = async (row, unset = false) => {
-        const target = unset ? { layer: "personal", revision: row.personal.revision } : editing;
-        if (!target || mutation.current) return;
-        mutation.current = true; setSaving(true);
+      const reloadRow = async (row) => {
+        const wid = workspaceId, scope = layer, id = identity(wid, scope, row.key);
+        if (mutation.current) return;
+        mutation.current = true; setPending(id);
         try {
-          const payload = { workspaceId, layer: target.layer, key: row.key, revision: target.revision };
-          if (!unset) payload.value = parse(row);
-          await invoke(unset ? "unset" : "set", payload);
-          if (!unset || (editing?.key === row.key && editing.layer === "personal")) setEditing(undefined);
-          if (await loadRows(workspaceId)) setStatus({ text: unset ? "已移除这项个人设置，恢复使用团队值。" : "设置已保存。" });
+          // Revisions belong to the layer: refresh sibling values too, without
+          // discarding their drafts or rebasing them over external changes.
+          if (!await loadRows(wid, true)) return;
+          dropDraft(id);
+          setIssues((current) => { const next = { ...current }; delete next[id]; return next; });
         } catch (error) {
-          // Preserve the draft and revision. Never replay a write or silently
-          // turn a conflict into an overwrite with a newly fetched revision.
-          if (unset) setStatus({ text: errorText(error), error: true });
-          else setEditing({ ...editing, error: errorText(error) });
-        } finally { mutation.current = false; setSaving(false); }
+          setIssues((current) => ({ ...current, [id]: { ...current[id], text: errorText(error), code: error.code } }));
+        } finally { mutation.current = false; setPending(""); }
       };
-      const control = (row) => {
-        const props = { id: "claw-config-value", value: editing.draft, disabled: saving || editing.nullValue, "aria-describedby": "claw-config-help", onChange: (event) => setEditing({ ...editing, draft: event.target.value, error: "" }) };
-        if (row.kind === "boolean") return jsxs("select", { ...props, children: [jsx("option", { value: "true", children: "启用" }), jsx("option", { value: "false", children: "关闭" })] });
-        if (row.kind === "effort") return jsx("select", { ...props, children: EFFORTS.map(([value, label]) => jsx("option", { value, children: label }, value)) });
-        return jsx(row.kind === "list" ? "textarea" : "input", { ...props, rows: row.kind === "list" ? 3 : undefined, type: row.kind === "number" ? "number" : "text", min: row.kind === "number" ? 1 : undefined, step: row.kind === "number" ? 1 : undefined, placeholder: row.kind === "list" ? "每行填写一条路径" : row.kind === "text" ? "输入模型标识" : "输入保留数量" });
+      const commit = async (row, value, unset = false, revision = row[layer].revision) => {
+        const wid = workspaceId, scope = layer, id = identity(wid, scope, row.key);
+        if (mutation.current || issues[id]?.uncertain) return;
+        mutation.current = true; setPending(id);
+        try {
+          const payload = { workspaceId: wid, layer: scope, key: row.key, revision };
+          if (!unset) payload.value = value;
+          const snapshot = await invoke(unset ? "unset" : "set", payload);
+          // The owner returns the accepted full snapshot. No catalog gate or write replay.
+          const nextRows = rows.map((entry) => ({ ...entry,
+            team: keySnapshot(snapshot, "team", entry.key), personal: keySnapshot(snapshot, "personal", entry.key),
+          }));
+          const nextRevision = snapshot.revisions[scope];
+          if (view.current.workspaceId === wid) setRows(nextRows);
+          // An accepted same-revision write changed only this key. Other local
+          // drafts at that revision can advance without accepting external edits.
+          setDrafts((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== id).map(([key, draft]) => [key,
+            draft.workspaceId === wid && draft.layer === scope && draft.revision === revision
+              ? { ...draft, revision: nextRevision } : draft,
+          ])));
+          setIssues((current) => { const next = { ...current }; delete next[id]; return next; });
+        } catch (error) {
+          // UI-only outcome barrier, not authorization: the config RPC/Core owns
+          // outcome evidence and CAS. An unknown/lost response may follow commit;
+          // CAS cannot confirm that outcome to the user. Do not resend the same
+          // unresolved intent. A false positive costs one explicit read; the
+          // smallest paused resource is [workspace, layer, key], not the page.
+          // A successful read clears it; even failed recovery keeps sibling rows.
+          const uncertain = ["committed", "partial", "unknown"].includes(error.effect) || (error.outcome !== "known" && error.effect !== "none");
+          setIssues((current) => ({ ...current, [id]: { text: errorText(error), code: error.code, phase: error.phase, uncertain } }));
+        } finally { mutation.current = false; setPending(""); }
       };
-      const editor = (row) => {
-        let help = row.description;
-        if (editing.nullValue) help = "保存 null，由宿主按默认策略选择模型。在个人设置中，这会替代团队指定的模型，并非跟随团队；“恢复团队值”才会移除已保存的个人值。";
-        else if (row.kind === "boolean") help = editing.draft === "true" ? row.enabled : row.disabled;
-        else if (row.kind === "effort") help = EFFORTS.find(([value]) => value === editing.draft)?.[2] || row.description;
-        return jsxs("div", { className: "claw-editor", children: [
-          jsxs("div", { children: [jsx("strong", { children: `编辑` + LAYERS[editing.layer] }), jsx("p", { className: "claw-muted", children: editing.layer === "team" ? "修改项目共享值。共享此配置且未设置个人值的成员会使用新值。" : "仅对你在此项目中的使用生效，不修改团队值。路径列表会整体替换团队列表，不会追加。" })] }),
-          jsx("label", { htmlFor: "claw-config-value", children: row.label }), control(row),
-          row.kind === "text" && jsxs("label", { className: "claw-checkbox", children: [jsx("input", { type: "checkbox", checked: editing.nullValue, disabled: saving, onChange: (event) => setEditing({ ...editing, nullValue: event.target.checked, error: "" }) }), "由宿主选择模型（保存 null）"] }),
-          jsx("p", { id: "claw-config-help", className: "claw-help", role: "status", children: help }),
-          editing.error && jsx("p", { className: "claw-error", role: "alert", children: editing.error }),
-          jsxs("div", { className: "claw-actions", children: [
-            jsx("button", { type: "button", className: "claw-primary", disabled: saving, onClick: () => void save(row), children: saving ? "正在保存…" : "保存修改" }),
-            jsx("button", { type: "button", disabled: saving, onClick: () => setEditing(undefined), children: "取消" }),
+      const saveDraft = (row) => {
+        const id = identity(workspaceId, layer, row.key), draft = drafts[id];
+        if (!draft) return;
+        let value = draft.text;
+        if (row.kind === "number") {
+          value = Number(value);
+          if (!Number.isInteger(value) || value < 1) {
+            setIssues((current) => ({ ...current, [id]: { text: "请输入不小于 1 的整数。" } })); return;
+          }
+        } else if (row.kind === "list") value = value.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
+        else if (row.kind === "text") value = value.trim() || null;
+        void commit(row, value, false, draft.revision);
+      };
+      const renderRow = (row) => {
+        const id = identity(workspaceId, layer, row.key), draft = drafts[id], issue = issues[id];
+        const inherited = layer === "personal" && !row.personal.present;
+        const value = inherited ? row.personal.effectiveValue : row[layer].value;
+        const disabled = loading || Boolean(pending) || issue?.uncertain;
+        const props = { "aria-label": row.label, disabled, "aria-describedby": helpKey === row.key ? `claw-help-${row.key}` : undefined };
+        const buttons = () => [
+          jsx("button", { type: "button", className: "claw-icon claw-confirm", disabled, title: row.kind === "list" ? "保存（Ctrl/⌘+Enter）" : "保存（Enter）", "aria-label": `保存：${row.label}`, onClick: () => saveDraft(row), children: "✓" }, "save"),
+          jsx("button", { type: "button", className: "claw-icon", disabled: Boolean(pending), title: "取消（Esc）", "aria-label": `取消：${row.label}`, onClick: () => dropDraft(id), children: "×" }, "cancel"),
+        ];
+        const keyboard = (event) => {
+          if (event.isComposing || event.nativeEvent?.isComposing) return;
+          if (event.key === "Escape") { event.preventDefault(); dropDraft(id); }
+          if (event.key === "Enter" && (row.kind !== "list" || event.ctrlKey || event.metaKey)) { event.preventDefault(); saveDraft(row); }
+        };
+        let control;
+        if (row.kind === "boolean") control = jsx("button", { ...props, type: "button", role: "switch", className: "claw-switch", "aria-checked": value === true, onClick: () => void commit(row, value !== true) });
+        else if (row.kind === "effort") control = jsx("select", { ...props, value: value ?? "", onChange: (event) => void commit(row, event.target.value), children: EFFORTS.map(([key, label]) => jsx("option", { value: key, children: label }, key)) });
+        else if (row.kind === "list") control = jsx("button", { ...props, type: "button", title: "编辑路径", onClick: () => changeDraft(row, draftText(row, value)), children: Array.isArray(value) && value.length ? `${value.length} 条路径` : "添加路径" });
+        else control = jsx("input", { ...props, type: row.kind === "number" ? "number" : "text", min: row.kind === "number" ? 1 : undefined, step: row.kind === "number" ? 1 : undefined,
+          value: draft?.text ?? draftText(row, value), placeholder: row.kind === "text" ? "宿主默认" : undefined,
+          onChange: (event) => changeDraft(row, event.target.value), onKeyDown: keyboard,
+        });
+        return jsxs("div", { className: "claw-row", "data-key": row.key, children: [
+          jsxs("div", { className: "claw-name", children: [
+            jsxs("div", { className: "claw-label", children: [jsx("span", { children: row.label }), jsx("button", { type: "button", className: "claw-info", "aria-label": `说明：${row.label}`, "aria-expanded": helpKey === row.key, onClick: () => setHelpKey(helpKey === row.key ? "" : row.key), children: "ⓘ" })] }),
+            jsx("code", { className: "claw-key", children: row.key }),
+            row.note && jsx("p", { className: "claw-note", children: row.note }),
           ] }),
-        ] });
+          jsxs("div", { className: "claw-value", children: [
+            inherited && jsx("span", { className: "claw-origin", title: "未设置个人值，当前跟随团队", children: "团队" }),
+            layer === "team" && row.personal.present && jsx("span", { className: "claw-origin", title: "此项个人设置仍会覆盖团队值", children: "个人已另设" }),
+            control,
+            draft && row.kind !== "list" && buttons(),
+            layer === "personal" && row.personal.present && jsx("button", { type: "button", className: "claw-icon", disabled, title: "恢复团队值", "aria-label": `恢复团队值：${row.label}`, onClick: () => void commit(row, undefined, true), children: "↶" }),
+            pending === id && jsx("span", { className: "claw-progress", role: "status", children: "处理中…" }),
+          ] }),
+          helpKey === row.key && jsx("p", { id: `claw-help-${row.key}`, className: "claw-wide claw-help", children: row.help }),
+          draft && row.kind === "list" && jsxs("div", { className: "claw-wide", children: [
+            jsx("textarea", { ...props, value: draft.text, placeholder: "每行一条路径", "aria-label": `编辑路径：${row.label}`, onChange: (event) => changeDraft(row, event.target.value), onKeyDown: keyboard }),
+            jsx("div", { className: "claw-list-actions", children: buttons() }),
+          ] }),
+          issue && jsxs("div", { className: "claw-wide claw-error", role: "alert", children: [jsx("span", { title: [issue.code, issue.phase].filter(Boolean).join(" · "), children: issue.text }), jsx("button", { type: "button", disabled: Boolean(pending), "aria-label": `重新读取：${row.label}`, onClick: () => void reloadRow(row), children: "重新读取" })] }),
+        ] }, row.key);
       };
-      const renderRow = (row) => jsxs("div", { className: "claw-row", children: [
-        jsxs("div", { className: "claw-row-heading", children: [jsxs("div", { className: "claw-row-title", children: [jsx("span", { className: "claw-row-label", children: row.label }), jsx("code", { className: "claw-key", children: row.key })] }), jsx("span", { className: "claw-muted", children: row.personal.present ? "当前使用个人值" : "当前使用团队值" })] }),
-        jsx("p", { className: "claw-muted", children: row.description }),
-        jsxs("div", { className: "claw-values", children: [
-          ...["team", "personal"].map((layer) => jsxs("div", { className: "claw-value", children: [
-            jsx("span", { className: "claw-muted", children: LAYERS[layer] }),
-            jsx("div", { className: "claw-effective", children: layer === "personal" && !row.personal.present ? "使用团队值：" + display(row, row.personal.effectiveValue, row.personal.effectivePresent) : display(row, row[layer].value, row[layer].present) }),
-            jsxs("div", { className: "claw-actions", children: [
-              jsx("button", { type: "button", disabled: saving || loading, "aria-label": (layer === "team" ? "编辑团队值：" : row.personal.present ? "编辑个人值：" : "设置个人值：") + row.label, "aria-expanded": editing?.key === row.key && editing.layer === layer, onClick: () => beginEdit(row, layer), children: layer === "team" ? "编辑团队值" : row.personal.present ? "编辑个人值" : "设置个人值" }),
-              layer === "personal" && row.personal.present && jsx("button", { type: "button", disabled: saving || loading, "aria-label": "恢复团队值：" + row.label, onClick: () => void save(row, true), children: "恢复团队值" }),
-            ] }),
-          ] }, layer)),
-          jsxs("div", { className: "claw-value", children: [jsx("span", { className: "claw-muted", children: "合并后的项目值" }), jsx("div", { className: "claw-effective", children: display(row, row.personal.effectiveValue, row.personal.effectivePresent) })] }),
+      return jsxs("section", { className: "claw-settings", "aria-label": "Claw Kit 项目设置", "aria-busy": loading, children: [
+        jsx("style", { children: CSS }), jsx("h2", { children: "项目设置" }),
+        jsxs("div", { className: "claw-toolbar", children: [
+          jsx("div", { className: "claw-project", children: jsx("select", { "aria-label": "项目", value: workspaceId, disabled: !items.length || Boolean(pending), onChange: (event) => { const id = event.target.value; setWorkspaceId(id); setRows([]); void loadRows(id); }, children: items.length ? items.map((item) => jsx("option", { value: item.workspaceId, children: item.title }, item.workspaceId)) : jsx("option", { value: "", children: "暂无项目" }) }) }),
+          jsx("div", { className: "claw-scope", role: "group", "aria-label": "设置范围", children: [["personal", "个人"], ["team", "团队"]].map(([scope, label]) => jsx("button", { type: "button", "aria-pressed": layer === scope, disabled: Boolean(pending), onClick: () => setLayer(scope), children: label }, scope)) }),
+          jsx("button", { type: "button", className: "claw-icon", title: "刷新项目", "aria-label": "刷新项目", disabled: loading || Boolean(pending), onClick: () => void loadProjects(), children: "↻" }),
         ] }),
-        editing?.key === row.key && editor(row),
-      ] }, row.key);
-      return jsxs("section", { className: "claw-settings", "aria-label": "Claw Kit 项目设置", "aria-busy": loading || saving, children: [
-        jsx("style", { children: CSS }),
-        jsxs("header", { children: [jsx("h2", { children: "Claw Kit 项目设置" }), jsx("p", { className: "claw-muted", children: "团队设置供项目成员共享。未设置个人值时使用团队值；个人设置只对你生效。“恢复团队值”会移除该项个人设置。" })] }),
-        jsxs("div", { className: "claw-toolbar", children: [jsxs("label", { className: "claw-project", children: [jsx("span", { children: "选择项目" }), jsx("select", { "aria-label": "选择项目", value: workspaceId, disabled: !items.length || loading || saving, onChange: (event) => { const id = event.target.value; setWorkspaceId(id); setRows([]); setEditing(undefined); void loadRows(id); }, children: items.length ? items.map((item) => jsx("option", { value: item.workspaceId, children: item.title }, item.workspaceId)) : jsx("option", { value: "", children: "暂无可选项目" }) })] }), jsx("button", { type: "button", disabled: loading || saving, onClick: () => void loadProjects(), children: "重新加载设置" })] }),
-        jsx("p", { className: "claw-status" + (status.error ? " claw-error" : ""), role: status.error ? "alert" : "status", children: status.text }),
-        !rows.length && jsx("p", { className: "claw-empty", children: loading ? "正在读取设置，请稍候…" : "暂无可显示的设置，请检查项目状态后重新加载。" }),
-        rows.length > 0 && SECTIONS.map((section) => jsxs("section", { className: "claw-section", "aria-label": section.title, children: [jsxs("div", { className: "claw-section-heading", children: [jsx("h3", { children: section.title }), jsx("p", { className: "claw-muted", children: section.description })] }), rows.filter((row) => row.section === section.title).map(renderRow)] }, section.title)),
-        jsx("p", { className: "claw-muted", children: "团队设置保存在 .claw/project.json，个人设置保存在本机的 .claw/project-override.json。“合并后的项目值”不含计划模板或宿主专属覆盖。重新加载会丢弃未保存的草稿。" }),
+        jsx("p", { className: "claw-scope-note", children: layer === "personal" ? "默认跟随团队，修改仅对本机项目生效。" : "共享设置；个人覆盖不受影响。" }),
+        pageError && jsx("p", { className: "claw-error", role: "alert", children: pageError }),
+        !rows.length && !pageError && jsx("p", { className: "claw-empty", role: "status", children: loading ? "读取中…" : "请添加并初始化 claw-kit 项目。" }),
+        rows.length > 0 && SECTIONS.map((section) => jsxs("section", { className: "claw-group", "aria-label": section.title, children: [jsx("h3", { children: section.title }), section.rows.map(([key]) => renderRow(rows.find((row) => row.key === key)))] }, section.title)),
+        rows.length > 0 && jsxs("details", { className: "claw-advanced", children: [jsx("summary", { children: "高级" }), ADVANCED.map(([key]) => renderRow(rows.find((row) => row.key === key)))] }),
       ] });
     }
     function apply(ctx) {
