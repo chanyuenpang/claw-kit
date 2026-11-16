@@ -632,7 +632,7 @@ async function editPlanWithOutcome(input: PlanEditInput, execution: ClawExecutio
         scope: task.project.scope,
       });
     }
-    if (task.project.scope !== "session" && next.status === "end.completed" && !next.retrospective?.summary?.trim()) {
+    if (task.project.scope !== "session" && next.knowledgeCapture !== false && next.status === "end.completed" && !next.retrospective?.summary?.trim()) {
       throw new ClawError(
         "RETROSPECTIVE_REQUIRED",
         "end.completed requires retrospective.summary before the plan can be completed.",
@@ -1160,7 +1160,7 @@ async function applyPlanMutationOperations(input: {
       });
       assertSingleTaskActivation(current, candidate);
       validatePlanDocument(candidate);
-      if (input.scope !== "session" && candidate.status === "end.completed" && !candidate.retrospective?.summary?.trim()) {
+      if (input.scope !== "session" && candidate.knowledgeCapture !== false && candidate.status === "end.completed" && !candidate.retrospective?.summary?.trim()) {
         throw new ClawError("RETROSPECTIVE_REQUIRED", "end.completed requires retrospective.summary before the plan can be completed.");
       }
       current = candidate;

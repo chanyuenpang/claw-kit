@@ -28,7 +28,8 @@ export function operationFailureError(operation, error) {
 export function unknownOperationError(operation, primary, diagnostics = []) {
     const failure = serializeFailure(primary, { fallbackCode: "CLAW_OPERATION_OUTCOME_UNKNOWN", operation, origin: "dsh", fallbackOutcome: "unknown" });
     const secondary = diagnostics.slice(0, 3).map(value => serializeFailure(value, { fallbackCode: "RECEIPT_DIAGNOSTIC_FAILED", operation: operation + ".receipt.read", origin: "dsh", fallbackOutcome: "unknown" }));
-    const message = "CLAW_OUTCOME_UNKNOWN: " + failure.code + ": " + failure.message + ". Commit is not confirmed; do not replay this operation."
+    const message = "CLAW_OUTCOME_UNKNOWN: " + failure.code + ": " + failure.message + ". Commit is not confirmed; do not replay an uncertain mutation."
+        + " This restriction is limited to the affected attempt/target; read-only diagnosis and unrelated work may continue. Known no-effect rejections may be corrected and submitted again."
         + (secondary.length ? " Read-only diagnosis: " + secondary.map(e => e.code + ": " + e.message).join("; ") : "");
     return Object.assign(new Error(message), { ...failure, message, outcome: "unknown", diagnostics: [...(failure.diagnostics ?? []), ...secondary].slice(0, 3) });
 }
@@ -110,7 +111,11 @@ function planFieldUpdates(args) {
     if (references !== undefined)
         updates.references = references;
     assignStrings("removeReferencePaths", "remove_reference_paths", "remove_references", "remove_reference", "removeReferencePaths");
-    assignText("retrospectiveSummary", "retrospective", "retrospective_summary", "retrospectiveSummary");
+    // Preserve supplied values: the CLI wire decoder owns type rejection.
+    // Silently dropping an object here turns a useful type error into missing input.
+    const retrospective = firstValue(args, "retrospective", "retrospective_summary", "retrospectiveSummary");
+    if (retrospective !== undefined)
+        updates.retrospectiveSummary = retrospective;
     assignStrings("whatWorked", "what_worked", "whatWorked");
     assignStrings("issues", "issues", "issue");
     assignStrings("followUps", "follow_ups", "follow_up", "followUps");

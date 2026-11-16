@@ -26,7 +26,8 @@ is a separate same-agent document edit, with no CLI runner or lifecycle recovery
   projections: do not call Goal tools or maintain a parallel todo list.
 - Create/start/edit/complete plans and tasks through the advertised operations;
   pass retrospective and `key_decisions` when closing. Project closeout needs
-  its retrospective. Use `subplan.create` with the supplied template only
+  its retrospective only when knowledge capture is enabled; no-capture plans may
+  finish without one. Use `subplan.create` with the supplied template only
   when supported. Never infer an operation or argument from CLI spelling.
 - Use `search` for recall and `search.index.refresh` only when needed;
   the latter accepts no arguments and is scoped to this session's project.

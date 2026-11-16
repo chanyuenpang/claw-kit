@@ -97,6 +97,40 @@ test("plan.start input errors survive both entries without writes and can be cor
   assert.equal(JSON.parse(fs.readFileSync(planPath, "utf8")).tasks.at(-1).status, "pending");
 });
 
+test("plan.done missing or blank retrospective is a known no-write rejection in both entries", async () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "claw-retrospective-correction-"));
+  const runtime = path.join(cwd, "session-runtime");
+  const identity = { agentSessionId: path.basename(cwd), workdir: cwd, client: { kind: "adapter" as const, host: "dsh" } };
+  const executor = new SessionCommandExecutor(new SessionRegistryV2(runtime));
+  const created = await executor.execute(identity, { operation: "plan.create", input: { title: "Closeout correction", knowledgeCapture: true } });
+  const planPath = (created.output as { planPath: string }).planPath;
+  await executor.execute(identity, { operation: "plan.start", input: { appendTasks: [{ title: "Work" }] } });
+  await executor.execute(identity, { operation: "task.done", input: { tasks: [{ id: 2 }] } });
+  const before = fs.readFileSync(planPath, "utf8");
+  for (const input of [{}, { retrospectiveSummary: "  " }]) {
+    let persistentFailure: ReturnType<typeof serializeCommandFailure> | undefined;
+    await assert.rejects(executor.execute(identity, { operation: "plan.done", input }), (error: unknown) => {
+      persistentFailure = serializeCommandFailure(error, "unknown");
+      assert.equal(persistentFailure.code, "RETROSPECTIVE_REQUIRED");
+      assert.equal(persistentFailure.operation, "plan.done");
+      assert.equal(persistentFailure.phase, "prepare");
+      assert.equal(persistentFailure.outcome, "known");
+      assert.equal(persistentFailure.effect, "none");
+      return true;
+    });
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL("../dist/bin.js", import.meta.url)), "internal-command"], {
+      cwd, env: { ...process.env, CLAW_SESSION_ID: identity.agentSessionId, CLAW_SESSION_DAEMON_RUNTIME_DIR: runtime },
+      input: JSON.stringify({ operation: "plan.done", input }) + "\n", encoding: "utf8", timeout: 30000,
+    });
+    assert.equal(result.status, 1, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout).error, persistentFailure);
+    assert.equal(fs.readFileSync(planPath, "utf8"), before);
+  }
+  const corrected = await executor.execute(identity, { operation: "plan.done", input: { retrospectiveSummary: "Work verified." } });
+  assert.equal((corrected.output as { planStatus: string }).planStatus, "end.completed");
+  assert.ok(corrected.knowledgeDispatch);
+});
+
 test("all structured owner failures keep cause and phase regardless of Error class", () => {
   const value = { code: "host.reserve-denied", message: "quota rejected", origin: "host", operation: "finalizer.reserve", phase: "admission", outcome: "unknown", effect: "unknown",
     cause: { code: "EACCES", message: "write denied", outcome: "known", effect: "none", operation: "ledger.open" } };

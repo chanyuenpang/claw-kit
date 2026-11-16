@@ -320,8 +320,15 @@ export class ClawCommandService {
         );
       case "plan.done": {
         const commandInput = request.input as PlanFieldUpdates;
-        if (this.resolveProject(context).scope !== "session" && !commandInput.retrospectiveSummary?.trim()) {
-          throw new ClawError("RETROSPECTIVE_REQUIRED", "plan.done requires retrospectiveSummary.");
+        const current = this.requireCurrentPlan(context);
+        const shown = showPlan({ cwd, scope: current.scope, taskName: current.taskName, taskPath: current.taskPath,
+          planFile: current.planFile, ownerSessionKey: this.ownerSessionKey(context) });
+        if (current.scope !== "session" && shown.plan.knowledgeCapture !== false && !commandInput.retrospectiveSummary?.trim()) {
+          // This owner rejects before editCurrentPlan can write or dispatch.
+          // Preserve that evidence instead of letting the transport infer unknown.
+          throw new ClawError("RETROSPECTIVE_REQUIRED", "plan.done requires nonempty retrospectiveSummary text. Supply a retrospective string and submit again.",
+            { field: "retrospectiveSummary", reason: "required" },
+            { operation: "plan.done", phase: "prepare", outcome: "known", effect: "none" });
         }
         return this.editCurrentPlan(context, [
           { type: "plan.update", updates: commandInput },

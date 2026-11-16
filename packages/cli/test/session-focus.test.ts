@@ -185,7 +185,10 @@ test("session recovery and child return retain the original dated container", as
   assert.equal(child.taskDir, root.taskDir);
   await executor.execute(identity, { operation: "plan.start", input: { appendTasks: [{ title: "Finish child" }] } });
   await executor.execute(identity, { operation: "task.done", input: { tasks: [{ id: 2 }] } });
-  await executor.execute(identity, { operation: "plan.done", input: { retrospectiveSummary: "Child finished" } });
+  assert.equal(JSON.parse(fs.readFileSync(child.planPath, "utf8")).knowledgeCapture, false);
+  const ended = await executor.execute(identity, { operation: "plan.done", input: {} });
+  assert.equal((ended.output as any).completedSubplan?.planStatus, "end.completed");
+  assert.equal(ended.knowledgeDispatch, undefined);
   assert.equal(resolveSessionBoundPlan(project, identity.agentSessionId), root.planPath);
   assert.equal(JSON.parse(fs.readFileSync(root.planPath, "utf8")).status, "process.active");
   assert.equal(fs.readFileSync(path.join(other, "plan.json"), "utf8"), original);

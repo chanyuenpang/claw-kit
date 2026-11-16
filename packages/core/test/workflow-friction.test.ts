@@ -59,6 +59,22 @@ test("an explicit status set or focus resume reopens a completed plan in one own
   assert.equal(resumedPlan.status, "process.active");
   assert.equal(resumedPlan.completedAt, undefined, "focus resume clears the completion timestamp");
 });
+test("no-capture plans complete through direct and ordered edits without retrospective", async () => {
+  for (const mode of ["direct", "operations", "optional"] as const) {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "claw-no-retro-"));
+    initProject({ cwd, projectName: "Optional retrospective", planning: false });
+    const created = await writePlan({ cwd, taskName: mode, goalText: "Finish scratch work", knowledgeCapture: false });
+    const result = await editPlan({ cwd, taskName: created.taskName,
+      taskPath: path.relative(path.join(cwd, ".claw", "tasks"), created.taskDir),
+      ...(mode === "operations" ? { operations: [{ type: "plan.status" as const, status: "end.completed" }] }
+        : { planStatus: "end.completed", ...(mode === "optional" ? { updates: { retrospectiveSummary: "Kept voluntarily." } } : {}) }),
+    });
+    assert.equal(result.planStatus, "end.completed");
+    assert.equal(result.knowledgeFinalizeId, undefined);
+    assert.equal(result.plan.retrospective?.summary ?? "", mode === "optional" ? "Kept voluntarily." : "");
+  }
+});
+
 test("create can carry the initial actionable tasks without a planning meta step", async () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "claw-actionable-"));
   initProject({ cwd, projectName: "Actionable", planning: true });

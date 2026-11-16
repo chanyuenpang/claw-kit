@@ -1876,8 +1876,10 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         ownerSessionKey,
       });
       const currentProject = resolveWorkflowProjectContext(process.cwd(), ownerSessionKey);
-      if (currentProject.scope !== "session" && !retrospective?.trim()) {
-        throw new ClawError("RETROSPECTIVE_REQUIRED", "plan done requires --retrospective for project-scoped plans.");
+      if (currentProject.scope !== "session" && current.plan.knowledgeCapture !== false && !retrospective?.trim()) {
+        throw new ClawError("RETROSPECTIVE_REQUIRED", "Knowledge-capturing project plans require --retrospective. Supply text and submit again.",
+          { field: "retrospective", reason: "required" },
+          { operation: "plan.done", phase: "prepare", outcome: "known", effect: "none" });
       }
       const project = tryResolveHookProject(process.cwd());
       const effectiveWriter = resolveKnowledgeWriterForHost(

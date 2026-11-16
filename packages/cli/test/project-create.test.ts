@@ -28,18 +28,38 @@ for (const flags of [["--scope", "session"], ["--scope=project"], ["--knowledge-
   });
 }
 
-test("no-capture project guidance and completion keep the same retrospective contract", async () => {
+test("no-capture project guidance and completion need no retrospective", async () => {
   const cwd = createFixture("capture-lifecycle");
   const executor = new SessionCommandExecutor(new SessionRegistryV2(createFixture("registry")));
   const identity = { agentSessionId: "actor-" + path.basename(cwd), workdir: cwd, client: { kind: "adapter" as const, host: "dsh" } };
   await executor.execute(identity, { operation: "plan.create", input: { title: "No capture", knowledgeCapture: false } });
   await executor.execute(identity, { operation: "plan.start", input: { appendTasks: [{ title: "Work" }] } });
   const progress = await executor.execute(identity, { operation: "task.done", input: { tasks: [{ id: 2 }] } });
-  assert.ok((progress.output as any).workflowGuidance.commandHints.some((hint: string) => hint.includes("--retrospective")));
-  await assert.rejects(executor.execute(identity, { operation: "plan.done", input: {} }));
-  const done = await executor.execute(identity, { operation: "plan.done", input: { retrospectiveSummary: "Work verified; no knowledge deposition requested." } });
+  assert.ok((progress.output as any).workflowGuidance.commandHints.includes("claw plan done"));
+  assert.doesNotMatch(JSON.stringify((progress.output as any).workflowGuidance), /--retrospective/);
+  const done = await executor.execute(identity, { operation: "plan.done", input: {} });
   assert.equal((done.output as any).planStatus, "end.completed");
   assert.equal(done.knowledgeDispatch, undefined);
+});
+
+test("ordinary CLI no-capture closeout accepts an omitted or voluntary retrospective", async () => {
+  for (const retrospective of [undefined, "Voluntary summary."]) {
+    const cwd = createFixture("cli-optional-retrospective");
+    const runtime = createFixture("registry");
+    const executor = new SessionCommandExecutor(new SessionRegistryV2(runtime));
+    const agentSessionId = "actor-" + path.basename(cwd);
+    const identity = { agentSessionId, workdir: cwd, client: { kind: "adapter" as const, host: "dsh" } };
+    const created = await executor.execute(identity, { operation: "plan.create", input: { title: "No capture", knowledgeCapture: false } });
+    await executor.execute(identity, { operation: "plan.start", input: { appendTasks: [{ title: "Work" }] } });
+    await executor.execute(identity, { operation: "task.done", input: { tasks: [{ id: 2 }] } });
+    const done = runClaw(["plan", "done", ...(retrospective ? ["--retrospective", retrospective] : [])], cwd, {
+      CLAW_HOST: "", CLAW_SESSION_ID: agentSessionId, CLAW_SESSION_DAEMON_RUNTIME_DIR: runtime,
+    });
+    assert.equal(done.planStatus, "end.completed");
+    assert.equal(done.knowledgeDispatch, undefined);
+    const plan = JSON.parse(fs.readFileSync((created.output as any).planPath, "utf8"));
+    assert.equal(plan.retrospective.summary, retrospective ?? "");
+  }
 });
 
 test("all session adapters share bootstrap and no-capture storage semantics", async () => {

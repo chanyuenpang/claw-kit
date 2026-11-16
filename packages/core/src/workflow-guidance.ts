@@ -27,11 +27,13 @@ type GoalModeTemplate = {
   setWhen?: "on_enter_process_active" | "on_resume_process_active";
 };
 
-function sessionCompletionGuidance(guidance: WorkflowGuidance): WorkflowGuidance {
+// No-capture project plans share optional retrospective guidance, but retain
+// their normal Goal steps; only legacy session scope suppresses those steps.
+function sessionCompletionGuidance(guidance: WorkflowGuidance, sessionScoped = true): WorkflowGuidance {
   return {
     ...guidance,
     nextsteps: guidance.nextsteps
-      .filter((step) => !step.includes("update_goal"))
+      .filter((step) => !sessionScoped || !step.includes("update_goal"))
       .map((step) => {
         if (!step.includes("claw plan done --retrospective")) return step;
         const prefix = step.match(/^\d+\.\s*/)?.[0] ?? "";
@@ -41,9 +43,7 @@ function sessionCompletionGuidance(guidance: WorkflowGuidance): WorkflowGuidance
       "Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
       "Use `plan done` for full-plan closeout.",
     ),
-    commandHints: guidance.commandHints?.map((hint) => hint === "claw plan done --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
-      ? "claw plan done"
-      : hint),
+    commandHints: guidance.commandHints?.map((hint) => hint.replace(' --retrospective "<summary>" [--key-decision "<durable decision>"]', "")),
   };
 }
 
@@ -437,8 +437,8 @@ export async function buildPlanWorkflowGuidance(params: {
     taskDoneCommand,
     suggestedTruthTargetsNote,
   };
-  const adaptLegacySessionGuidance = (guidance: WorkflowGuidance): WorkflowGuidance => params.scope === "session"
-    ? sessionCompletionGuidance(guidance)
+  const adaptLegacySessionGuidance = (guidance: WorkflowGuidance): WorkflowGuidance => params.scope === "session" || plan.knowledgeCapture === false
+    ? sessionCompletionGuidance(guidance, params.scope === "session")
     : guidance;
 
   switch (plan.status) {
