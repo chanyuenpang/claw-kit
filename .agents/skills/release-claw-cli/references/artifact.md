@@ -39,13 +39,13 @@ A tested candidate aligned with the target CLI base takes precedence over bump/b
 - Prepare and commit beta source locally without pushing. Before formal publication
   require the frozen candidate, seven-day local trial, clean local main at its
   source revision and no remote divergence. Verify/publish with `--candidate <dir>`;
-  preserve its version and bytes, skipping bumps/builds/packing. Verify npm retrieval
+  preserve its version and bytes, skipping bumps/builds/packing. Successful uploads complete npm publication; do not download or poll metadata
   before pushing main, and require `HEAD == origin/main` at completion. Preparation
   includes proportionate checks and `npm run check:template-versions`.
   The template check is a required gate for every
   built-in skill package that contains `TEMPLATE.json`; its version must match
   `TEMPLATE_DRIVER_VERSION`, rather than the release package version.
-- After publishing, verify npm metadata and real retrieval for both packages.
+- Record successful upload receipts for both packages. No post-upload download, registry visibility or latest-metadata gate.
   Never reuse an already-published version or force-move an existing tag.
 - Refresh local installations only when separately requested and only from the
   published npm/GitHub artifacts.

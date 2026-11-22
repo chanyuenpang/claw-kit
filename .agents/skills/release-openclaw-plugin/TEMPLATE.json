@@ -38,7 +38,7 @@
     {
       "id": 4,
       "title": "Pass the exact-source gate and release",
-      "detail": "With explicit publication authority, require clean source main at the tested candidate revision and complete authorized source push without divergence. Publish the exact frozen OpenClaw artifact tree to the existing immutable vopenclaw-<candidate-version> tag and GitHub Release through its artifact owner. Record source and artifact commits separately and compare the public tree with the candidate. Never tag raw source as an installable artifact or regenerate the selected tree.",
+      "detail": "With explicit publication authority, require clean source main at the tested candidate revision and complete authorized source push without divergence. Publish the exact frozen OpenClaw artifact tree to the existing immutable vopenclaw-<candidate-version> tag and GitHub Release through its artifact owner. Record source and artifact commits separately and verify the local frozen tree before upload. Successful push completes delivery without refetch/download checks. Never tag raw source as an installable artifact or regenerate the selected tree.",
       "status": "pending"
     },
     {

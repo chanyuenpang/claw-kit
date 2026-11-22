@@ -26,7 +26,7 @@ A tested candidate aligned with the target CLI base takes precedence over bump/b
   `npm run publish:dsh-plugin` (dry run) — the tarball must contain `lib/`,
   `skills/`, and `cordis.patch.yml` and no build junk, and its staged version
   must equal the npm mapping.
-- Promotion: require clean local main at the tested sourceRevision and no remote divergence; publish with --candidate, verify registry retrieval, then complete the authorized source push and immutable vdsh tag. Require HEAD == origin/main at completion.
+- Promotion: require clean local main at the tested sourceRevision and no remote divergence; publish with --candidate; successful upload completes npm publication without download or metadata checks, then complete the authorized source push and immutable vdsh tag. Require HEAD == origin/main at completion.
 - A wrong-version publish cannot be removed with a granular token
   (bypass-2FA tokens cannot unpublish, E403); it lingers as a non-`latest`
   version. Publish the corrected version with `--tag latest`.
@@ -40,7 +40,7 @@ A tested candidate aligned with the target CLI base takes precedence over bump/b
   during the next release pass, before tagging the new version. Never repoint
   or force-move an existing tag.
 - Profile delivery is a separate required checkpoint for a release targeting
-  a known DSH profile: after npm visibility, install the exact published npm
+  a known DSH profile: after successful upload, install the exact published npm
   version into that profile. A non-Electron target accepts
   `dsh plugin --profile web add @veewo/dsh-claw-kit@<npm-version>` (substitute
   the authorized target). The Electron-managed `desktop` profile does not: the

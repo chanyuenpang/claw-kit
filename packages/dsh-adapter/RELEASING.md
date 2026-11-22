@@ -24,11 +24,11 @@ npm run publish:dsh-plugin -- --candidate <directory>
 npm run publish:dsh-plugin -- --candidate <directory> --publish
 ~~~
 
-The first command is read-only artifact verification. --publish requires clean local main at the tested sourceRevision and no remote divergence, then sends the candidate’s original tgz with --ignore-scripts. It never builds, tests, exports, changes versions or repacks workspace source. Real registry retrieval must match the candidate SHA-256.
+The first command is read-only artifact verification. --publish requires clean local main at the tested sourceRevision and no remote divergence, then sends the candidate’s original tgz with --ignore-scripts. It never builds, tests, exports, changes versions or repacks workspace source. A successful upload completes npm publication; no post-upload download, metadata or registry-propagation gate is performed. Local frozen inventory/hash verification remains before upload.
 
-An exact-resource receipt records attempted/accepted/unknown/verified outside the immutable candidate. An accepted or unknown upload is only reconciled by exact registry download; it is not automatically resent. Metadata/read failures are not proof of no upload. A conflicting coordinate remains blocked locally rather than authorizing different bytes.
+An exact-resource receipt records attempted/accepted/unknown outside the immutable candidate. Accepted receipts return success without any network recovery; old verified receipts retain their successful-upload meaning. Attempted/unknown results never authorize an automatic resend and block only that exact coordinate. A still-owned attempt lock is never taken over. Metadata/read failures cannot undo an accepted upload.
 
-After verified npm retrieval, the release owner completes the authorized source push, immutable vdsh-<four-segment-version> tag and verification. Never repoint tags; require main == origin/main and a clean worktree at completion. The npm package remains @veewo/dsh-claw-kit with loader id claw-kit, never a dev-renamed alias.
+After successful upload, the release owner completes the authorized source push, immutable vdsh-<four-segment-version> tag and verification. Never repoint tags; require main == origin/main and a clean worktree at completion. The npm package remains @veewo/dsh-claw-kit with loader id claw-kit, never a dev-renamed alias.
 
 ## Profile delivery is separate from activation
 

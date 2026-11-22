@@ -19,9 +19,9 @@ A tested candidate aligned with the target CLI base takes precedence over bump/b
 
 For a supplied candidate, follow `docs/beta-release.md`. Preserve its version and
 `artifacts/marketplace` tree; skip bumps and export/build steps in this template.
-Verify hashes, seven-day trial and source revision. Require matching CLI npm
-retrieval before any GitHub push; publish the stored tree to the existing immutable
-artifact tag and compare its files against the candidate. A beta request itself
+Verify hashes, seven-day trial and source revision. Require the matching CLI successful-upload receipt before GitHub delivery, without
+download or metadata gates. Verify the local frozen tree before uploading it to
+the existing immutable artifact tag; successful push completes delivery. A beta request itself
 authorizes no remote writes.
 
 Run only inside the claw-kit repository. This skill owns only

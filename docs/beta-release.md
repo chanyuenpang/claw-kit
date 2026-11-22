@@ -19,7 +19,7 @@ npm run audit:release-versions -- --phase beta --artifacts cli,codex,dsh
 npm run audit:release-versions -- --phase release --cli-base <target-cli> --artifacts codex --candidate <frozen-dir>
 ~~~
 
-工作表读取所有平台的源码 manifest；只核对明确选中的候选，并验证其原始 inventory/hash、已声明 knowledge-capture CLI pin 和 Codex mutation bridge 的 pluginVersion。候选准备 owner 负责原子同步桥接版本，并将其纳入同输入恢复/冻结记录。它不自动选择“最新”批次，不把 manifest 当作公开发布证明，也不替代七天试用、npm 下载核验或实际激活验证。选中项需要准备/复核时返回非零并列明原因；未选项只盘点，不能阻断不相关交付。正式发布的 owner 在上传前处理选中项的实际版本不一致；不要把这份工作表移植成 Host/adapter 的影子授权 gate。
+工作表读取所有平台的源码 manifest；只核对明确选中的候选，并验证其原始 inventory/hash、已声明 knowledge-capture CLI pin 和 Codex mutation bridge 的 pluginVersion。候选准备 owner 负责原子同步桥接版本，并将其纳入同输入恢复/冻结记录。它不自动选择“最新”批次，不把 manifest 当作公开发布证明，也不替代七天试用、上传成功回执或另行授权的实际激活验证。选中项需要准备/复核时返回非零并列明原因；未选项只盘点，不能阻断不相关交付。正式发布的 owner 在上传前处理选中项的实际版本不一致；不要把这份工作表移植成 Host/adapter 的影子授权 gate。
 
 ## 版本与准备 owner
 
@@ -47,7 +47,7 @@ npm run beta:verify -- --candidate <准备目录>
 
 pack 检查确切准备输入与干净源码，构建所选产物，并将同一清单封为 frozen，记录 sourceRevision、版本、npm映射、完整 tree/tgz 和 SHA-256。组合产物来自同一次提交。冻结后再 pack 只校验返回原件，零重建。不存在 beta:pack 不升号生成另一个新同号批次的入口。
 
-进程中断遗留本地准备/打包锁时，beta:recover --candidate <目录> 只释放可证明进程已退出的锁；活进程或无法识别的 owner 不抢占。上传锁不按此办法重获发送许可：已有 receipt 的恢复只下载核对，不删除 possibly-live 上传锁或重发。
+进程中断遗留本地准备/打包锁时，beta:recover --candidate <目录> 只释放可证明进程已退出的锁；活进程或无法识别的 owner 不抢占。上传锁不按此办法重获发送许可：已有 receipt 只读取上传结果：accepted 即成功，旧 verified 同样代表已接受；attempted/unknown 不自动重发。不下载核对、不删除 possibly-live 上传锁。
 
 构建失败时 preparing 不可安装/转正。原输入的版本写入中断可以 beta:resume --candidate <目录> 恢复，再本地提交并 pack；输入改变须创建新候选，不可覆写已冻结内容。锁冲突影响该准备/打包操作，不能以覆盖文件绕过。新候选可以有版本间隙，不回收曾分配的号。
 
@@ -88,11 +88,11 @@ CLI 的 `verify:release` / `publish:release` 同样接受 `--trial-waiver "<本�
 
 CLI 补丁允许只选择 `--artifacts cli`：源码中 adapter 基线按既有规则同步，不代表发布这些插件。已发布插件保留原号；运行兼容性按实际协议和依赖检查，不能只靠前三段不同就判为不兼容。PATH 调用的宿主需更新对应 CLI 安装并重新建立进程；固定 CLI/Core pin 的旧入口继续使用原版本，不因此自动获得补丁。
 
-CLI owner 依次上传 Core→CLI 的原 tgz，核验真实下载和 latest 后才 push 源码；DSH owner 上传所选冻结 tgz 并核验下载，随后按 release-dsh-plugin 完成源码/tag及授权交付。一个组合清单不意味着 CLI 发布入口自动发布 DSH。
+CLI owner 依次上传 Core→CLI 的原 tgz，上传返回成功后 push 源码；DSH owner 上传所选冻结 tgz，成功后按 release-dsh-plugin 完成源码/tag及授权交付。上传成功即满足 npm 发布完成条件，不执行发布后的下载核验、registry 可见性轮询或 latest 元数据门禁；传播延迟不撤销成功回执，也不授权重发。一个组合清单不意味着 CLI 发布入口自动发布 DSH。
 
-Codex 发布冻结 marketplace 完整 Git tree；Cindy 交独立 artifact 仓库 owner；OpenCode/OpenClaw 保留其既有 tag namespace。artifact commit 可以与 source commit 不同，但 tree/hash不能变。不得移动已有 tag，也不得把 raw source main冒充合成插件。
+Codex 发布冻结 marketplace 完整 Git tree；Cindy 交独立 artifact 仓库 owner；OpenCode/OpenClaw 保留其既有 tag namespace。artifact commit 可以与 source commit 不同，但本地冻结 tree/hash不能变；上传前核对本地原件，push 返回成功即完成该 artifact 交付，不再下载/refetch 远端 tree 核验。不得移动已有 tag，也不得把 raw source main冒充合成插件。
 
-每个 npm 坐标的尝试回执在候选旁路记录 attempted/accepted/unknown/verified；已接受或未知上传只能精确下载对账，不自动重发。不同远端字节阻止该坐标及其依赖交付，不以目录/catalog/version查询代替发布 owner。元数据查询失败不能解释为前次上传不存在。最终正式交付仍要求 main=origin/main且工作树干净，不以只上传 npm冒充全套完成。
+每个 npm 坐标的尝试回执在候选旁路记录 attempted/accepted/unknown；旧 verified 回执兼容为上传成功历史，不再生成新的下载核验态。accepted 直接返回成功，attempted/unknown 保留原结果并禁止自动重发，不以下载、目录/catalog/version 查询或暂时不可见推翻 owner 结果。未知结果仅阻塞该确切坐标及其依赖，不阻塞无关产物。正常源码/tag/Release 交付仍须完成，最终要求 main=origin/main 且工作树干净；独立安装/激活不是 npm 发布成功的门禁。
 
 ## 旧同号批次
 

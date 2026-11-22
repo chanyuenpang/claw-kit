@@ -9,7 +9,7 @@ The repository owner uses direct delivery by default.
 
 ## Candidate version and promotion policy
 
-Every new installable candidate increments the selected artifact’s normal formal version (including local unpublished allocations), without a beta suffix. Use beta:prepare, commit the prepared manifests locally, then beta:pack --candidate. Same-input unfinished preparation may resume; frozen candidates are reused and never rebuilt. Promotion retains the tested version and exact bytes; it must not bump/build/pack/export. Beta never pushes, tags or publishes. See docs/beta-release.md.
+Every new installable candidate increments the selected artifact’s normal formal version (including local unpublished allocations), without a beta suffix. Use beta:prepare, commit the prepared manifests locally, then beta:pack --candidate. Same-input unfinished preparation may resume; frozen candidates are reused and never rebuilt. Promotion retains the tested version and exact bytes; it must not bump/build/pack/export. Beta never pushes, tags or publishes. A successful upload response completes publication: no post-upload download, registry-visibility or metadata gate. Accepted uploads are never resent; unknown outcomes remain blocked only for their exact coordinate. Normal source/tag/Release delivery and separately authorized installation remain separate steps. See docs/beta-release.md.
 
 ## Release version reconciliation
 

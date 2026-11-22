@@ -1,19 +1,16 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { verifyCandidate } from "./release-candidate.mjs";
 
 const assert = (value, message) => { if (!value) throw new Error(message); };
-const sha = bytes => createHash("sha256").update(bytes).digest("hex");
 async function save(file, value) {
   const temporary = file + ".tmp-" + randomUUID();
   try { await fs.writeFile(temporary, JSON.stringify(value, null, 2) + "\n", { flag: "wx" }); await fs.rename(temporary, file); }
   finally { await fs.rm(temporary, { force: true }); }
 }
 
-/** Publish an already-tested DSH artifact. This owner never builds, exports or
- * packs workspace source. 'pack name@version' below is registry retrieval only. */
+/** Publish an already-tested DSH artifact. Never build, export, repack or download. */
 export async function promoteFrozenDsh(directory, { publish = false, runNpm, now = Date.now(), validateSource, trialWaiver } = {}) {
   assert(trialWaiver === undefined || typeof trialWaiver === "string" && trialWaiver.trim().length > 0, "Trial waiver requires the owner's explicit authorization evidence.");
   const verified = await verifyCandidate(directory, { ready: publish && trialWaiver === undefined, now });
@@ -41,25 +38,24 @@ export async function promoteFrozenDsh(directory, { publish = false, runNpm, now
     }
   }
   const receipt = await publishFrozenNpmResource({ directory: verified.directory, candidateHash: manifestHash, identity, tarball,
-    expectedHash: candidate.files[artifact.file], receiptName: "promotion-dsh.json", runNpm });
+    receiptName: "promotion-dsh.json", runNpm });
   return { ...verified, artifact, tarball, identity, receipt };
 }
 
 /** Exact-resource attempt ledger shared by npm artifact owners. */
-export async function publishFrozenNpmResource({ directory, candidateHash, identity, tarball, expectedHash, receiptName, runNpm }) {
+export async function publishFrozenNpmResource({ directory, candidateHash, identity, tarball, receiptName, runNpm }) {
   assert(path.basename(receiptName) === receiptName && receiptName.endsWith(".json"), "Invalid receipt name.");
   const receiptPath = path.join(directory, receiptName), lockPath = receiptPath + ".lock";
   let lock;
   try { lock = await fs.open(lockPath, "wx"); }
   catch (error) {
     if (error.code !== "EEXIST") throw error;
-    // A still-running or crashed uploader owns this lock. Recovery may inspect
-    // the durable attempt and registry bytes but must not overwrite its ledger,
-    // delete its lock, or issue another upload.
+    // A still-running or crashed uploader owns this lock. Inspect its durable
+    // result only; never take over the lock, download, or issue another upload.
     const receipt = JSON.parse(await fs.readFile(receiptPath, "utf8"));
     assert(receipt.candidateHash === candidateHash && receipt.identity === identity, "Promotion receipt identity differs.");
-    await verifyRegistryResource({ identity, expectedHash, runNpm });
-    return { ...receipt, state: "verified", recoveryReadOnly: true };
+    assertUploadAccepted(receipt);
+    return { ...receipt, recoveryReadOnly: true };
   }
   try {
     let receipt;
@@ -78,18 +74,14 @@ export async function publishFrozenNpmResource({ directory, candidateHash, ident
         throw error;
       }
     }
-    // Reconcile attempted/unknown/accepted by exact remote bytes, never resend.
-    await verifyRegistryResource({ identity, expectedHash, runNpm });
-    receipt.state = "verified"; receipt.verifiedAt = new Date().toISOString(); await save(receiptPath, receipt);
+    // A successful owner response completes publication. Propagation is not a
+    // second gate; old verified receipts already include upload acceptance.
+    assertUploadAccepted(receipt);
     return receipt;
   } finally { await lock.close(); await fs.unlink(lockPath); }
 }
 
-async function verifyRegistryResource({ identity, expectedHash, runNpm }) {
-  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), "claw-npm-retrieval-"));
-  try {
-    const result = JSON.parse(await runNpm(["pack", identity, "--ignore-scripts", "--json", "--pack-destination", temporary, "--registry=https://registry.npmjs.org"]));
-    assert(result.length === 1 && path.basename(result[0].filename) === result[0].filename, "Invalid registry retrieval response.");
-    assert(sha(await fs.readFile(path.join(temporary, result[0].filename))) === expectedHash, "Registry bytes differ; do not rebuild or resend this coordinate.");
-  } finally { await fs.rm(temporary, { recursive: true, force: true }); }
+function assertUploadAccepted(receipt) {
+  assert(["accepted", "verified"].includes(receipt.state),
+    `Upload outcome for ${receipt.identity} is ${receipt.state}; do not resend this coordinate.`);
 }

@@ -18,31 +18,30 @@ async function fixture(t) {
     artifacts: { dsh: { version: "0.2.44.1", npmVersion: "0.2.44-rc.1", file } }, files: await inventory(path.join(dir, "artifacts")) };
   await fs.writeFile(path.join(dir, "candidate.json"), JSON.stringify(candidate));
   await startTrial(dir, "fixture trial", Date.now() - WEEK_MS - 1000);
-  const calls = []; let loseResponse = false, corrupt = false;
+  const calls = []; let loseResponse = false;
   const runNpm = async args => {
     calls.push(args);
-    if (args[0] === "publish") { assert.equal(args[1], path.join(dir, "artifacts", file)); if (loseResponse) throw new Error("lost response"); return ""; }
-    assert.equal(args[0], "pack"); assert.equal(args[1], "@veewo/dsh-claw-kit@0.2.44-rc.1");
-    const dest = args[args.indexOf("--pack-destination") + 1];
-    await fs.writeFile(path.join(dest, "retrieved.tgz"), corrupt ? "wrong bytes" : bytes);
-    return JSON.stringify([{ filename: "retrieved.tgz" }]);
+    assert.equal(args[0], "publish", "publication must never query or download registry content");
+    assert.equal(args[1], path.join(dir, "artifacts", file));
+    if (loseResponse) throw Object.assign(new Error("lost response"), { code: "ECONNRESET" });
+    return "Your package is being processed and may take a few minutes to become available.";
   };
   return { dir, bytes, candidate, calls, runNpm, validateSource: revision => assert.equal(revision, candidate.sourceRevision),
-    lose: () => { loseResponse = true; }, corrupt: () => { corrupt = true; } };
+    lose: () => { loseResponse = true; } };
 }
 
-test("DSH promotion sends frozen tgz and never builds, versions or exports workspace", async t => {
+test("DSH upload success completes publication without download, build, versioning or export", async t => {
   const f = await fixture(t);
   const before = await fs.readFile(path.join(f.dir, "candidate.json"));
   const dry = await promoteFrozenDsh(f.dir);
   assert.equal(dry.artifact.npmVersion, "0.2.44-rc.1"); assert.equal(f.calls.length, 0);
   const result = await promoteFrozenDsh(f.dir, { publish: true, runNpm: f.runNpm, validateSource: f.validateSource });
-  assert.equal(result.receipt.state, "verified");
-  assert.deepEqual(f.calls.map(args => args[0]), ["publish", "pack"]);
+  assert.equal(result.receipt.state, "accepted");
+  assert.deepEqual(f.calls.map(args => args[0]), ["publish"]);
   assert.ok(f.calls[0].includes("--ignore-scripts"));
   assert.deepEqual(await fs.readFile(path.join(f.dir, "candidate.json")), before);
   await promoteFrozenDsh(f.dir, { publish: true, runNpm: f.runNpm, validateSource: f.validateSource });
-  assert.equal(f.calls.filter(args => args[0] === "publish").length, 1);
+  assert.equal(f.calls.length, 1);
 });
 
 test("explicit DSH owner waiver binds frozen identity without fabricating trial time", async t => {
@@ -57,44 +56,47 @@ test("explicit DSH owner waiver binds frozen identity without fabricating trial 
   assert.equal(f.calls.length, 0);
   await assert.rejects(promoteFrozenDsh(f.dir, { ...options, trialWaiver: " " }), /authorization evidence/);
   const result = await promoteFrozenDsh(f.dir, { ...options, trialWaiver: "Owner explicitly waived this repair trial." });
-  assert.equal(result.receipt.state, "verified");
+  assert.equal(result.receipt.state, "accepted");
   const waiver = JSON.parse(await fs.readFile(path.join(f.dir, "trial-waiver-dsh.json"), "utf8"));
   assert.equal(waiver.candidateHash, result.manifestHash);
   assert.equal(waiver.identity, result.identity);
   assert.equal(await fs.readFile(trialPath, "utf8"), trialBytes);
   await promoteFrozenDsh(f.dir, { ...options, trialWaiver: waiver.evidence });
-  assert.equal(f.calls.filter(args => args[0] === "publish").length, 1);
+  assert.equal(f.calls.length, 1);
   await assert.rejects(promoteFrozenDsh(f.dir, { ...options, trialWaiver: "different authorization" }), /waiver differs/);
 });
 
-test("unknown upload is recovered by exact registry bytes, never resent", async t => {
+test("unknown upload preserves the owner error and is never downloaded or resent", async t => {
   const f = await fixture(t); f.lose();
-  await assert.rejects(promoteFrozenDsh(f.dir, { publish: true, runNpm: f.runNpm, validateSource: f.validateSource }), /lost response/);
+  const options = { publish: true, runNpm: f.runNpm, validateSource: f.validateSource };
+  await assert.rejects(promoteFrozenDsh(f.dir, options), error => error.code === "ECONNRESET");
   assert.equal(JSON.parse(await fs.readFile(path.join(f.dir, "promotion-dsh.json"), "utf8")).state, "unknown");
-  await promoteFrozenDsh(f.dir, { publish: true, runNpm: f.runNpm, validateSource: f.validateSource });
-  assert.deepEqual(f.calls.map(args => args[0]), ["publish", "pack"]);
+  await assert.rejects(promoteFrozenDsh(f.dir, options), /unknown; do not resend/);
+  assert.deepEqual(f.calls.map(args => args[0]), ["publish"]);
 });
 
-test("a crash-left attempt lock permits read-only reconciliation, not resend or ledger takeover", async t => {
+for (const state of ["attempted", "accepted", "verified"]) {
+  test(`crash-left ${state} receipt never downloads, resends or takes over its lock`, async t => {
+    const f = await fixture(t);
+    const bytes = await fs.readFile(path.join(f.dir, "candidate.json"));
+    const record = JSON.stringify({ schemaVersion: 1, candidateHash: createHash("sha256").update(bytes).digest("hex"),
+      identity: "@veewo/dsh-claw-kit@0.2.44-rc.1", state });
+    await fs.writeFile(path.join(f.dir, "promotion-dsh.json"), record);
+    await fs.writeFile(path.join(f.dir, "promotion-dsh.json.lock"), "crash-left owner");
+    const call = () => promoteFrozenDsh(f.dir, { publish: true, runNpm: f.runNpm, validateSource: f.validateSource });
+    if (state === "attempted") await assert.rejects(call(), /attempted; do not resend/);
+    else { const result = await call(); assert.equal(result.receipt.state, state); assert.equal(result.receipt.recoveryReadOnly, true); }
+    assert.equal(f.calls.length, 0);
+    assert.equal(await fs.readFile(path.join(f.dir, "promotion-dsh.json"), "utf8"), record);
+    assert.equal(await fs.readFile(path.join(f.dir, "promotion-dsh.json.lock"), "utf8"), "crash-left owner");
+  });
+}
+
+test("changed local frozen bytes still prevent upload", async t => {
   const f = await fixture(t);
-  const bytes = await fs.readFile(path.join(f.dir, "candidate.json"));
-  const receipt = { schemaVersion: 1, candidateHash: createHash("sha256").update(bytes).digest("hex"),
-    identity: "@veewo/dsh-claw-kit@0.2.44-rc.1", state: "attempted" };
-  const record = JSON.stringify(receipt);
-  await fs.writeFile(path.join(f.dir, "promotion-dsh.json"), record);
-  await fs.writeFile(path.join(f.dir, "promotion-dsh.json.lock"), "crash-left owner");
-  const result = await promoteFrozenDsh(f.dir, { publish: true, runNpm: f.runNpm, validateSource: f.validateSource });
-  assert.equal(result.receipt.recoveryReadOnly, true);
-  assert.deepEqual(f.calls.map(args => args[0]), ["pack"]);
-  assert.equal(await fs.readFile(path.join(f.dir, "promotion-dsh.json"), "utf8"), record);
-  assert.equal(await fs.readFile(path.join(f.dir, "promotion-dsh.json.lock"), "utf8"), "crash-left owner");
-});
-
-test("different remote bytes stay local to the coordinate and do not authorize resend", async t => {
-  const f = await fixture(t); f.corrupt();
-  await assert.rejects(promoteFrozenDsh(f.dir, { publish: true, runNpm: f.runNpm, validateSource: f.validateSource }), /bytes differ/);
-  await assert.rejects(promoteFrozenDsh(f.dir, { publish: true, runNpm: f.runNpm, validateSource: f.validateSource }), /bytes differ/);
-  assert.equal(f.calls.filter(args => args[0] === "publish").length, 1);
+  await fs.writeFile(path.join(f.dir, "artifacts", "dsh", "package.tgz"), "changed bytes");
+  await assert.rejects(promoteFrozenDsh(f.dir, { publish: true, runNpm: f.runNpm, validateSource: f.validateSource }), /changed/);
+  assert.equal(f.calls.length, 0);
 });
 
 test("frozen pack is reuse without touching source; preparing cannot install or promote", async t => {

@@ -14,7 +14,7 @@
       "Candidate preparation allocated the family-specific target version; promotion preserves it unchanged.",
       "Focused adapter build, tests, and checks pass; the tarball contains lib/, skills/, cordis.patch.yml.",
       "The exact vdsh-<version> tag points to clean origin/main.",
-      "@veewo/dsh-claw-kit@<npm-version> is publicly available; for a known authorized target profile, the exact published version is installed and its on-disk manifest/config verified without an unapproved restart."
+      "@veewo/dsh-claw-kit@<npm-version> has a successful upload receipt; registry propagation is not a completion gate; for a known authorized target profile, the exact published version is installed and its on-disk manifest/config verified without an unapproved restart."
     ]
   },
   "tasks": [
@@ -45,13 +45,13 @@
     {
       "id": 5,
       "title": "Pass the exact-source gate and release",
-      "detail": "Require clean local main at the tested candidate sourceRevision and no remote divergence. Publish only the frozen DSH tgz using npm run publish:dsh-plugin -- --candidate <directory> --publish; verify exact registry retrieval. Only then complete authorized source push and immutable vdsh-<candidate-version> tag, requiring HEAD == origin/main and a clean worktree. Never rebuild the package or resend an accepted/unknown upload.",
+      "detail": "Require clean local main at the tested candidate sourceRevision and no remote divergence. Publish only the frozen DSH tgz using npm run publish:dsh-plugin -- --candidate <directory> --publish; successful upload completes npm publication with no download or metadata checks. Then complete authorized source push and immutable vdsh-<candidate-version> tag, requiring HEAD == origin/main and a clean worktree. Never rebuild the package or resend an accepted/unknown upload.",
       "status": "pending"
     },
     {
       "id": 6,
       "title": "Verify the immutable DSH release",
-      "detail": "Verify the exact npm version is publicly available and latest, the immutable vdsh-<version> tag matches clean origin/main, then install the exact published npm version into the known authorized DSH profile. A non-Electron profile takes `dsh plugin --profile <name> add @veewo/dsh-claw-kit@<npm-version>`; the Electron-managed desktop profile refuses that command and takes `plugin_manager(action: install_bundle, target: <exact spec or tarball>)` instead — never a direct profile file write. Then verify installed package.json, compatible CLI, the new bundle version, and (where the CLI accepts the profile) dump-config. Ask for the target if unknown; do not restart without separate explicit authorization. Runtime claw_run/skills verification remains deferred until the owner restarts.",
+      "detail": "Record successful upload of the exact npm version without polling visibility or latest, the immutable vdsh-<version> tag matches clean origin/main, then install the exact published npm version into the known authorized DSH profile. A non-Electron profile takes `dsh plugin --profile <name> add @veewo/dsh-claw-kit@<npm-version>`; the Electron-managed desktop profile refuses that command and takes `plugin_manager(action: install_bundle, target: <exact spec or tarball>)` instead — never a direct profile file write. Then verify installed package.json, compatible CLI, the new bundle version, and (where the CLI accepts the profile) dump-config. Ask for the target if unknown; do not restart without separate explicit authorization. Runtime claw_run/skills verification remains deferred until the owner restarts.",
       "status": "pending"
     }
   ],

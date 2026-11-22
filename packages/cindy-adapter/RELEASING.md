@@ -22,7 +22,8 @@ artifact-only marketplace delivery target; users keep the same market URL.
    the plugin. The shared package currently reuses the standard seven-skill inputs.
    Publishing this additional npm artifact requires explicit scope authorization;
    existing release scripts do not automatically publish it. Never publish the plugin
-   until the matching frozen skill tarball has been published and retrieved/verified.
+   until the matching frozen skill tarball upload succeeds; do not gate delivery on
+   registry propagation, package download or metadata checks.
    Any changed skill bytes require a new shared package version and plugin candidate.
 4. Verify the detached artifact; never restore generated skills inside this source tree.
    In a separately authorized publication checkout of the existing artifact repository,

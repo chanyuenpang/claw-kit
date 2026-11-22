@@ -100,40 +100,34 @@ test("formal verification rejects changed source before remote operations", asyn
   await assert.rejects(promoteCandidate(directory, { sourceRoot: source, publish: true }), /Commit useful changes/);
 });
 
-test("promotion uploads original tarballs in dependency order and pushes only after retrieval", async (t) => {
+test("promotion uploads original tarballs once in dependency order then pushes without registry gates", async (t) => {
   const { root, source, directory, candidate } = await fixture(t);
   const remote = path.join(root, "remote.git");
   git(root, "init", "--bare", remote);
   git(source, "remote", "add", "origin", remote);
   git(source, "push", "origin", "main");
-  // Candidate remains local until all registry retrieval checks have succeeded.
   await write(path.join(source, "source.txt"), "new beta source");
   git(source, "commit", "-am", "local beta");
   candidate.sourceRevision = git(source, "rev-parse", "HEAD");
   await write(path.join(directory, "candidate.json"), candidate);
   await startTrial(directory, undefined, Date.now() - WEEK_MS);
   const fakeNpm = path.join(root, "npm.mjs");
-  await write(fakeNpm, `import fs from 'node:fs'; import path from 'node:path';
-const root=${JSON.stringify(root)}; const c=${JSON.stringify(candidate)}; const dir=${JSON.stringify(directory)};
+  await write(fakeNpm, `import fs from 'node:fs'; import path from 'node:path'; import {execFileSync} from 'node:child_process';
+const root=${JSON.stringify(root)}; const remote=${JSON.stringify(remote)}; const revision=${JSON.stringify(candidate.sourceRevision)};
 const args=process.argv.slice(2); fs.appendFileSync(path.join(root,'calls.jsonl'),JSON.stringify(args)+'\\n');
-if(args[0]==='view' && args[2]==='dist.integrity'){ console.log(JSON.stringify({error:{code:'E404'}}));process.exit(1); }
-if(args[0]==='view'){console.log(JSON.stringify(c.version));}
-else if(args[0]==='publish'){if(!args.includes('--ignore-scripts') || !fs.existsSync(args[1]))process.exit(2);}
-else if(args[0]==='pack'){const p=c.packages.find(p=>args[1]===p.name+'@'+c.version);const dest=args[args.indexOf('--pack-destination')+1];const filename=path.basename(p.file);fs.copyFileSync(path.join(dir,'artifacts',p.file),path.join(dest,filename));if(fs.existsSync(path.join(root,'corrupt')))fs.writeFileSync(path.join(dest,filename),'wrong');console.log(JSON.stringify([{filename}]));}
-else {throw Error('unexpected command '+args.join(' '));}`);
+if(args[0]!=='publish') throw Error('Publication must not query or download registry content: '+args.join(' '));
+if(!args.includes('--ignore-scripts') || !fs.existsSync(args[1]))process.exit(2);
+if(execFileSync('git',['--git-dir',remote,'rev-parse','main'],{encoding:'utf8'}).trim()===revision)throw Error('Source was pushed before uploads completed');
+console.log('Your package is being processed and may take a few minutes to become available.');`);
   const previous = process.env.npm_execpath;
   process.env.npm_execpath = fakeNpm;
   t.after(() => { if (previous === undefined) delete process.env.npm_execpath; else process.env.npm_execpath = previous; });
-  await write(path.join(root, "corrupt"), "yes");
-  await assert.rejects(promoteCandidate(directory, { sourceRoot: source, publish: true }), /Registry bytes differ/);
-  assert.notEqual(git(remote, "rev-parse", "main"), candidate.sourceRevision);
-  await fs.rm(path.join(root, "corrupt"));
   await promoteCandidate(directory, { sourceRoot: source, publish: true });
   assert.equal(git(remote, "rev-parse", "main"), candidate.sourceRevision);
+  await promoteCandidate(directory, { sourceRoot: source, publish: true });
   const calls = (await fs.readFile(path.join(root, "calls.jsonl"), "utf8")).trim().split("\n").map(JSON.parse);
-  assert.deepEqual(calls.filter(([op]) => op === "publish").map((args) => args[1]), candidate.packages.map((pkg) => path.join(directory, "artifacts", pkg.file)));
-  assert.ok(calls.every(([op]) => ["publish", "pack", "view"].includes(op)));
-  assert.ok(calls.filter(([op]) => op === "pack").every((args) => !args.includes("--workspace")));
+  assert.deepEqual(calls.map(([op]) => op), ["publish", "publish"]);
+  assert.deepEqual(calls.map(args => args[1]), candidate.packages.map(pkg => path.join(directory, "artifacts", pkg.file)));
 });
 
 test("real npm packing and local installation preserve candidate bytes without a remote", async (t) => {

@@ -7,13 +7,13 @@
 - 截至 2026-09-30，`@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` 均已发布 npm `0.2.41`（`latest`），完成三份真实 tarball 获取（当时发布面仍包含 Client）；`v0.2.41` GitHub Release 的不可变标签指向提交 `d7c78c9`。这只证明发布完成，不代表本机全局 CLI 或插件已刷新。`0.2.40` 仍仅为独立的 GitHub source checkpoint，未作为 npm 版本发布。
 - CLI release version bump 覆盖 root、lockfile、Core、CLI、各 adapter baseline、内部 `@veewo/claw-core` 依赖和 Codex plugin manifest。`TEMPLATE_DRIVER_VERSION` 是全部内置 `TEMPLATE.json` 与 built-in default template 的版本权威；Codex knowledge-capture runtime 的 CLI 版本跟随 root package。
 - 模板版本维护顺序固定为 `npm run sync:template-versions`、`npm run sync:shared-skills`、`npm run check:template-versions`。`npm run check:template-versions` 是所有内置模板的独立只读发布门禁；`verify:batch-release` 才额外检查模板与平台产物，CLI-only 的 `verify:release` / `publish:release` 不替代此门禁，也不隐式修复模板。
-- owner 直接从 `main` 交付。发布前必须提交并推送有价值内容，使本地 `main` 精确等于 `origin/main` 且 `git status --porcelain` 为空；不得用 stash、临时分支或 PR 绕过门禁。
-- canonical release gate 固定覆盖版本与内部依赖对齐、shared-skill 同步、committed Codex marketplace payload、隔离 template smoke、clean worktree 与 exact `main == origin/main`。完整测试、adapter bundle tests 和两个 npm 包的 dry-run 按本轮实际风险比例化追加。
-- npm 发布顺序固定为 `@veewo/claw-core`、`@veewo/claw`。release 完成态直接核对 GitHub source/tag、两个 npm 包与 `dist-tags.latest`、committed Codex marketplace payload 和 clean worktree。
+- owner 直接从 `main` 交付。发布前提交有价值内容，要求干净本地 `main` 位于冻结候选源提交且无远端分歧；上传成功后完成源码推送，最终 `main == origin/main` 且 `git status --porcelain` 为空；不得用 stash、临时分支或 PR 绕过门禁。
+- 正式发布只消费已准备、测试并冻结的原件：上传前检查版本/pin、本地 inventory/hash、精确 sourceRevision、试用或明确豁免、干净 main 和无远端分歧；不在 promotion 重建、同步或修复候选。准备期检查按实际风险比例化选择。
+- npm 发布顺序固定为 `@veewo/claw-core`、`@veewo/claw`。npm 发布以 owner 上传成功回执为完成条件，不再下载核验、轮询可见性或检查 `dist-tags.latest` 作为门禁。正常 GitHub source/tag/Release 交付和 clean worktree 仍单独完成；冻结原件保持上传前本地完整性检查。
 - release 与用户端 `update` 是两个有序完成边界。release 不要求刷新本机全局 CLI 或 installed Codex plugin；发布后由独立 `claw-kit:update` 从已发布 npm 与 official GitHub marketplace 刷新，并只允许 `claw-kit@claw-kit` identity。
 - `release-claw-kit` 是仓库本地的 artifact-family router，不随 Codex plugin 发布。CLI/npm 发布由 `release-claw-cli` 执行；Codex、Cindy、OpenClaw 与 OpenCode 各由独立 platform release skill 执行。artifact-specific ownership 和 Cindy installer/update 合同由 `.claw/truth/features/artifact-specific-plugin-release-and-cindy-update.md` 及其 ADR 拥有。
 - 新模板协议可能让旧的正式 CLI 无法加载待发布模板。release 开发阶段可以临时把全局 `claw` link 到已构建的 workspace CLI/core 以解除自举阻塞，但这不是发布或 update 完成证据；registry 可见后必须恢复正式 npm 安装，Codex plugin 仍不得从未发布 workspace payload 刷新。
-- npm registry 传播可能短暂滞后。若 metadata 尚未看到新版本，应等待可见后再进入独立 update；若 metadata 已可见但 tarball retrieval 报 `ETARGET`，先清理本地 npm cache 再重试，不能把本地 cache stale 误判为 publish 回滚。
+- npm registry 传播可能短暂滞后，但不改变已成功上传的发布完成状态，也不授权重发。若 metadata 尚未看到新版本，应等待可见后再进入独立 update；若 metadata 已可见但 tarball retrieval 报 `ETARGET`，先清理本地 npm cache 再重试，不能把本地 cache stale 误判为 publish 回滚。
 
 ## 实现锚点
 

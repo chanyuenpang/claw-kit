@@ -45,7 +45,7 @@
     {
       "id": 5,
       "title": "Pass the exact-source gate and release",
-      "detail": "Require matching CLI npm retrieval before any push. Consume only the selected candidate’s unchanged source revision and stored frozen marketplace tree; never use a newly assembled workspace tree or re-export. Publish to the authorized existing immutable vcodex-<candidate-version> artifact ref and GitHub Release, record source and artifact commits separately, compare published files/hash with the candidate, and require clean source main == origin/main at completion. No npm or ZIP publication through this skill.",
+      "detail": "Require the matching CLI successful-upload receipt before GitHub delivery, without download or metadata gates. Consume only the selected candidate’s unchanged source revision and stored frozen marketplace tree; never use a newly assembled workspace tree or re-export. Publish to the authorized existing immutable vcodex-<candidate-version> artifact ref and GitHub Release, record source and artifact commits separately, verify the local frozen tree/hash before upload and treat successful push as delivery, without refetch/download checks, and require clean source main == origin/main at completion. No npm or ZIP publication through this skill.",
       "status": "pending"
     },
     {

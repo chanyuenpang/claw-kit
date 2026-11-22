@@ -18,7 +18,7 @@ The repository owner uses direct delivery by default.
 
 - Every new installable candidate allocates a new intended stable version using the artifact family’s existing release numbering rules, including locally reserved/unpublished versions. Never add a beta suffix or reuse a version for different bytes. Prepare versions, commit source on local `main`, then freeze npm tarballs and composed adapter artifacts. Failed same-input preparation may resume; a frozen candidate is reused, never rebuilt. Beta must never push a branch/tag or publish npm/GitHub artifacts.
 - After installation and version confirmation, test the batch locally for seven days. Changed artifacts require a new batch and trial. Never reuse a published version for different bytes.
-- Formal promotion publishes the frozen npm tarballs and verifies retrieval before pushing source and releasing the stored adapter tree. Before npm publication require clean local `main` at the candidate revision and no remote divergence; require `main == origin/main` at completion. Do not rebuild or bump versions during promotion. See `docs/beta-release.md`.
+- Formal promotion publishes the frozen npm tarballs; a successful upload response completes npm publication. Do not download packages, poll registry visibility, or gate completion on metadata propagation. Then push source and release the stored adapter tree. Accepted uploads are never resent; unknown outcomes remain blocked only for their exact coordinate. Before npm publication require clean local `main` at the candidate revision and no remote divergence; require `main == origin/main` at completion. Do not rebuild or bump versions during promotion. See `docs/beta-release.md`.
 
 ## Release version reconciliation
 
