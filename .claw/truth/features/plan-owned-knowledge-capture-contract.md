@@ -1,11 +1,11 @@
-﻿# Plan-owned knowledge capture contract
+# Plan-owned knowledge capture contract
 
 <!-- state: current -->
 ## Current behavior
 
 - New public plan creation has one project workflow. Core resolves the existing ancestor project or initializes missing local claw structure/default configuration at the workspace; existing configuration and personal overrides are preserved.
 - Public `scope` / `--scope` is removed. DSH/Cindy expose `knowledge_capture`; canonical requests and plans use `knowledgeCapture`. CLI accepts `--knowledge-capture true|false` and the false alias `--no-knowledge-capture`. Explicit input overrides ordinary template defaults; the remaining default is true.
-- Persisted `PlanDocument.knowledgeCapture` decides whether this plan accumulates knowledge. False does not select another store, add a session TTL, suppress normal retrospective requirements, or disable single-focus/Goal behavior. Subplans inherit the parent policy.
+- Persisted `PlanDocument.knowledgeCapture` decides whether this plan accumulates knowledge. False does not select another store, add a session TTL, or disable single-focus/Goal behavior. An `end.completed` plan with capture disabled may omit its retrospective; if supplied, it remains part of the plan. Capture-enabled plans still require a nonblank retrospective summary. Subplans inherit the parent policy.
 - Finalizer auxiliary plans are non-capturing, but still perform the source job’s Truth/ADR work. The knowledge-result lifecycle cannot enable recursive capture. Canonical actor/job/delegate binding—not template labels or a session-storage requirement—owns claim and safe closeout.
 - Each public root gets a fresh task container; identical display titles do not overwrite another actor’s plan. Session identity remains host-owned and binds the current focus. Parent end.leave remains temporary descent/resume behavior.
 - Old session-stored plans, bindings and frozen receipts remain readable in place. Their internal scope is recovery metadata, not a public creation choice. Existing legacy retention behavior is not transferred to new capture:false plans.

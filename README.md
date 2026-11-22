@@ -93,6 +93,8 @@ cd your-project
 claw init
 ```
 
+`claw init` also installs the standalone `/knowledge-capture` project skill in both `.agents/skills/knowledge-capture/` (OpenAI/Codex) and `.claude/skills/knowledge-capture/` (Claude Code). Commit these skill directories so collaborators can explicitly supplement project knowledge without installing claw-kit or its CLI. The built-in destination is `.claw/truth/` (ADRs under `adr/`); when custom knowledge skills are configured, capture reads their output-directory and content-format instructions instead. Each copy includes the finalizer's canonical format appendix, Claude's manual-only invocation setting, and OpenAI's `agents/openai.yaml` policy. Automatic project setup installs the same files; repeated setup only fills missing files and preserves existing skill edits, including with `init --force`. Existing project-internal skill-directory links are reused.
+
 `claw init` creates `.claw/` and writes a bootstrap block into `AGENTS.md`, between `<!-- claw-kit:bootstrap:start -->` and `<!-- claw-kit:bootstrap:end -->`. That block tells the agent to load and follow `using-claw-kit` when it starts project work or restores context. The skill picks the host entry, resumes an existing workflow, and decides whether a plan is needed. A casual question does not become a plan. Claude Code loads `CLAUDE.md` and skips `AGENTS.md` when a `CLAUDE.md` is already on the project path, so that same block also has to be in `CLAUDE.md` for those projects.
 
 ### 3. Talk

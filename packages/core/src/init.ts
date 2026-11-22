@@ -12,6 +12,7 @@ import {
   DEFAULT_MAX_TASKS_TO_KEEP,
 } from "./project-defaults.js";
 import { markTaskLayoutMigrationComplete } from "./task-layout-migration.js";
+import { installProjectKnowledgeSkill } from "./project-skills.js";
 import type { ProjectConfig } from "./types.js";
 
 const CORE_VERSION = readCoreVersion();
@@ -120,6 +121,7 @@ export function ensureProjectEnvironment(cwd: string): InitProjectResult {
       }
       if (!hadTasks) createdPaths.push(markTaskLayoutMigrationComplete(clawDir));
       ensureClawGitignoreRules(path.join(projectRoot, ".gitignore"), createdPaths);
+      installProjectKnowledgeSkill(projectRoot, createdPaths);
       return { projectRoot, clawDir, projectJsonPath, created: !existed,
         projectId: project.projectId, projectName: project.projectName ?? defaults.name, createdPaths };
     });
@@ -162,6 +164,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
 
   writeFile(projectJsonPath, `${JSON.stringify(projectConfig, null, 2)}\n`, createdPaths);
   ensureClawGitignoreRules(gitignorePath, createdPaths);
+  installProjectKnowledgeSkill(projectRoot, createdPaths);
 
   return {
     projectRoot,

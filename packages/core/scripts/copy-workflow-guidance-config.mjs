@@ -18,6 +18,12 @@ fs.cpSync(knowledgeWriterSource, knowledgeWriterDest, { recursive: true });
 const knowledgeFormatSource = path.resolve(packageDir, "..", "..", ".agents", "skills", "claw-kit-doc", "references", "knowledge-format.md");
 fs.copyFileSync(knowledgeFormatSource, path.join(knowledgeWriterDest, "knowledge-format.md"));
 
+// Project-local capture must work after the initializing CLI/plugin is removed.
+const captureSource = path.resolve(packageDir, "..", "..", "shared", "skills", "knowledge-capture");
+const captureDest = path.join(packageDir, "dist", "src", "resources", "knowledge-capture");
+fs.rmSync(captureDest, { recursive: true, force: true });
+fs.cpSync(captureSource, captureDest, { recursive: true });
+
 const docUpdaterSource = path.join(packageDir, "resources", "doc-updater");
 const docUpdaterDest = path.join(packageDir, "dist", "src", "resources", "doc-updater");
 fs.rmSync(docUpdaterDest, { recursive: true, force: true });

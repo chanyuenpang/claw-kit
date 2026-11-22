@@ -1,4 +1,4 @@
-﻿# ADR: Plan-owned capture with one automatic project workflow
+# ADR: Plan-owned capture with one automatic project workflow
 
 ## Context
 
@@ -8,7 +8,7 @@ The prior migration introduced knowledgeCapture but retained public scope, so ag
 
 - Expose only capture intent for this choice: knowledge_capture / knowledgeCapture, with CLI --knowledge-capture true|false and the existing negative alias. Remove public scope and new template storage declarations.
 - Core owns request validation, read-only configuration preparation, single-focus admission and idempotent local initialization. Invalid input/focus conflicts precede writes; defaults must not replace existing settings. No global installation or host restart is implied.
-- New roots use project storage regardless of capture. False affects knowledge accumulation only; normal configuration, lifecycle and retrospective rules remain the same. Allocate fresh containers so auxiliary roots cannot overwrite unrelated work with the same display title.
+- New roots use project storage regardless of capture. False affects knowledge accumulation only; normal configuration and lifecycle remain the same, except `end.completed` no longer requires a retrospective summary when capture is disabled. A supplied retrospective is still retained; capture-enabled plans still require one. Allocate fresh containers so auxiliary roots cannot overwrite unrelated work with the same display title.
 - Keep the existing template creation → canonical claim contract. Knowledge-result plans must stay false; job identity, admitted actor, project and exact delegate binding own the actual authority. Do not use template names or storage labels as extra permission gates. A temporarily left parent with an unfinished child is not release proof.
 - Keep old internal storage locators and receipts for in-place recovery, without recreating plans, changing tokens or replaying unknown sends. Do not migrate old data merely because the public parameter disappeared.
 
