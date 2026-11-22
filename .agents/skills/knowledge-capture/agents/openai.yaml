@@ -1,5 +1,0 @@
-interface:
-  display_name: "Knowledge capture"
-  short_description: "Write established conversation knowledge into Truth and ADR"
-policy:
-  allow_implicit_invocation: false
