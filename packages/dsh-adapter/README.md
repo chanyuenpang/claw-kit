@@ -122,9 +122,9 @@ CLI 需支持 `--host dsh`（见 claw-kit 仓库的 dsh host 支持）。
 
 ## Skills
 
-安装投递由 [skill-inputs.json](<skill-inputs.json>) 声明的 9 个完整 skill 包。
+安装投递由 [skill-inputs.json](<skill-inputs.json>) 声明的 8 个完整 skill 包。
 公共规范源只保留一份，打包时复制全套资源与所有宿主分支，不维护 adapter 源码镜像。
-`update` 保持本宿主所有权；手动 `knowledge-capture` 与自动 finalizer 分离。
+`update` 保持本宿主所有权；手动 `knowledge-capture` 只作为项目技能投递，不再注册为插件全局技能，且与自动 finalizer 分离。旧项目可直接重跑 `claw init` 补齐（不重置已有配置），或在下次创建计划时自动补齐。
 角色技能只提交语义任务和结果，DSH adapter 负责执行机制。
 
 更新安装时若 pnpm 报旧 tarball ENOENT，先 `dsh plugin --profile <name> remove @veewo/dsh-claw-kit`

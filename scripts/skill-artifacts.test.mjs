@@ -10,10 +10,10 @@ import { assembleSkills, loadSkillInputs, verifySkillSourceLayout, SKILL_HOSTS, 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const common = ["planning", "config", "create-claw-skill", "feature-architecture", "researcher", "using-claw-kit", "claw-kit-doc"];
 const matrix = {
-  codex: [...common, "knowledge-capture", "update"],
-  dsh: [...common, "knowledge-capture", "update"],
+  codex: [...common, "update"],
+  dsh: [...common, "update"],
   opencode: [...common, "update"], standard: common,
-  openclaw: ["claw-kit-doc"],
+  openclaw: common,
 };
 
 async function fixture(t) {
@@ -83,10 +83,11 @@ test("assembly copies complete binary-safe packages without source writes and su
   }
   assert.equal(await treeDigest(sourceRoot), before);
   await fs.rename(sourceRoot, path.join(root, "detached-source"));
-  const file = path.join(root, "artifacts", "dsh", "skills", "knowledge-capture", "payload.bin");
+  const file = path.join(root, "artifacts", "dsh", "skills", "planning", "payload.bin");
   assert.deepEqual(await fs.readFile(file), Buffer.from([0, 255, 128, 13, 10]));
-  const appendix = path.join(root, "artifacts", "dsh", "skills", "knowledge-capture", "references", "knowledge-format.md");
-  assert.equal(await fs.readFile(appendix, "utf8"), "canonical format\n");
+  for (const host of SKILL_HOSTS) {
+    await assert.rejects(fs.access(path.join(root, "artifacts", host, "skills", "knowledge-capture")), { code: "ENOENT" });
+  }
 });
 
 test("real host artifacts retain complete cross-host skills and every companion byte", async (t) => {

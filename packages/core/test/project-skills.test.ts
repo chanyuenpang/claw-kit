@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildDirectKnowledgeAssignments, ensureProjectEnvironment, initProject, resolveProjectContext } from "../src/index.js";
+import { buildDefaultProjectConfig, buildDirectKnowledgeAssignments, createProjectPlan, ensureProjectEnvironment, initProject, resolveProjectContext } from "../src/index.js";
 
 function fixture(t: test.TestContext): string {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "claw-project-skills-")));
@@ -36,6 +36,35 @@ for (const mode of ["explicit", "automatic"]) {
       assert.equal(fs.readFileSync(skill(root, host, "references/knowledge-format.md"), "utf8"), finalizerFormat);
     }
     assert.deepEqual(ensureProjectEnvironment(root).createdPaths, []);
+  });
+}
+
+for (const entry of ["init", "plan creation"]) {
+  test(`an older initialized project gains capture skills through ${entry} without resetting content`, async (t) => {
+    const root = fixture(t), claw = path.join(root, ".claw");
+    fs.mkdirSync(path.join(claw, "truth"), { recursive: true });
+    const configPath = path.join(claw, "project.json");
+    const overridePath = path.join(claw, "project-override.json");
+    const truthPath = path.join(claw, "truth", "existing.md");
+    fs.writeFileSync(configPath, JSON.stringify({ ...buildDefaultProjectConfig({ cwd: root }),
+      version: "0.2.60", name: "Existing project", planning: false,
+      knowledgeWriter: { externalSkills: ["team-knowledge"], datedSectionsToKeep: 12 } }));
+    fs.writeFileSync(overridePath, JSON.stringify({ goalMode: false }));
+    fs.writeFileSync(truthPath, "# Existing knowledge\n");
+    fs.mkdirSync(path.dirname(skill(root, ".agents", "SKILL.md")), { recursive: true });
+    fs.writeFileSync(skill(root, ".agents", "SKILL.md"), "user capture skill\n");
+    const preserved = [configPath, overridePath, truthPath, skill(root, ".agents", "SKILL.md")];
+    const bytes = preserved.map(file => fs.readFileSync(file));
+    if (entry === "init") {
+      const result = initProject({ cwd: root, projectName: "Must not replace existing name", planning: true });
+      assert.equal(result.created, false);
+      assert.equal(result.projectName, "Existing project");
+    } else {
+      await createProjectPlan({ title: "Upgrade old project", knowledgeCapture: false }, { cwd: root });
+    }
+    for (const host of hosts) for (const file of files) assert.ok(fs.existsSync(skill(root, host, file)));
+    assert.deepEqual(preserved.map(file => fs.readFileSync(file)), bytes);
+    assert.deepEqual(initProject({ cwd: root }).createdPaths, []);
   });
 }
 

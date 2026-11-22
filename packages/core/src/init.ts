@@ -147,9 +147,8 @@ export function initProject(input: InitProjectInput): InitProjectResult {
   const createdPaths: string[] = [];
   const exists = fs.existsSync(clawDir);
   if (exists && !input.force) {
-    throw new ClawError("PROJECT_ALREADY_INITIALIZED", `Project already contains .claw at ${clawDir}.`, {
-      clawDir,
-    });
+    // Re-running init is a non-destructive upgrade path for older projects.
+    return ensureProjectEnvironment(projectRoot);
   }
 
   const projectConfig = buildDefaultProjectConfig(input);
