@@ -1,4 +1,4 @@
-﻿# Shared Skill Sources
+# Shared Skill Sources
 
 ## 状态
 
@@ -8,9 +8,9 @@
 ## 核心事实
 
 - 七个项目可发现公共整包以 [.agents/skills](<../../../.agents/skills/>) 为单一源码：planning、config、create-claw-skill、feature-architecture、researcher、using-claw-kit、claw-kit-doc；它不是生成镜像。
-- 手动 knowledge-capture 保持 [独立共享包](<../../../shared/skills/knowledge-capture/>)；update 仍由各 adapter 独立拥有。Core 内部 delegate/writer 与仓库维护技能不进入公共包，外部治理只来自显式 knowledgeWriter.externalSkills。
+- 手动 knowledge-capture 的 canonical authoring source 保持为[独立共享包](<../../../shared/skills/knowledge-capture/>)；Core 初始化会将它安装为项目技能，详见 [项目安装决策](<../adr/init-installs-standalone-knowledge-capture-skill.md>)。update 仍由各 adapter 独立拥有。Core 内部 delegate/writer 与仓库维护技能不进入公共包，外部治理只来自显式 knowledgeWriter.externalSkills.
 - 文档入口、完整语料与格式规范共同位于 [claw-kit-doc](<../../../.agents/skills/claw-kit-doc/>)；Core 仅在构建 dist 时复制知识格式，不反写内部源码。
-- 六宿主 skill-inputs.json 声明整包依赖，由 [catalog/assembler](<../../../scripts/skill-artifacts.mjs>) 解析。Codex/DSH 各九包、OpenCode 八包、standard 七包、Cindy 六包但仍只有四项 manifest 注册、OpenClaw 仅文档；集合不同不允许裁剪包内任何 host reference、template、fallback 或 runner。
+- 六宿主 skill-inputs.json 声明整包依赖，由 [catalog/assembler](<../../../scripts/skill-artifacts.mjs>) 解析。Codex/DSH/OpenCode 各八包、standard 七包；Cindy 通过独立共享数据包准备 standard 七包而不全局注册插件内 skills；OpenClaw 声明七包；集合不同不允许裁剪包内任何 host reference、template、fallback 或 runner。
 - 所有整包逐字节复制到隔离 artifact 的平铺 skills/。没有生成 banner 或 adapter 源码镜像；旧 sync 命令明确失败，不能用来恢复源目录副本。输出只能在源码之外或 ignored dist 内；拒绝源码重叠、未知 id、符号链接和陈旧 skills 树，源 hash 变化使候选失败。
 - 完整 exporter 使用原 manifest、hooks、loader、模板发现与 runtime API；失败保留旧有效产物或要求全新输出。DSH 导出和 npm pack 使用同一隔离 stage；OpenCode 的安装发现副本仍是安装产物，而不是 authoring source。
 - Git marketplace 必须发布组装后的自包含树，不能发布缺 skill 的原 adapter 源目录。Codex 保留 .agents/plugins/marketplace.json → packages/codex-adapter 布局及原 ./skills/、$PLUGIN_ROOT/scripts 合同；没有采用根插件迁移或 Core 模板发现扩展。发布目标/ref 须另获授权。
